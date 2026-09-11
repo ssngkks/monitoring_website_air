@@ -2,43 +2,66 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Node;
-use App\Models\SensorDataHourly;
+use App\Repositories\NodeRepository;
+use App\Repositories\SensorDataRepository;
+use App\Repositories\SensorHourlyAggRepository;
 use Illuminate\Console\Command;
 
 class AggregateSensorDataHourly extends Command
 {
     protected $signature = 'sensor-data:aggregate-hourly';
 
-    protected $description = 'Agregasi rata-rata sensor_data per jam ke tabel sensor_data_hourly.';
+    protected $description = 'Agregasi rata-rata sensor_readings per jam ke koleksi Firestore sensor_hourly_agg.';
 
-    public function handle(): int
-    {
+    public function handle(
+        NodeRepository $nodeRepo,
+        SensorDataRepository $sensorRepo,
+        SensorHourlyAggRepository $hourlyRepo
+    ): int {
         $jamMulai = now()->subHour()->startOfHour();
         $jamSelesai = now()->subHour()->endOfHour();
+        $hourIso = $jamMulai->format('Y-m-d\TH:00:00\Z');
 
-        $nodes = Node::all();
+        $nodes = $nodeRepo->getActiveNodes();
         $jumlahDiagregasi = 0;
 
         foreach ($nodes as $node) {
-            $agregat = $node->sensorData()
-                ->whereBetween('created_at', [$jamMulai, $jamSelesai])
-                ->selectRaw('AVG(ph) as avg_ph, AVG(temp) as avg_temp, AVG(turbidity) as avg_turbidity')
-                ->first();
+            $nodeId = $node['id'];
+            $readings = $sensorRepo->getByNodeId(
+                $nodeId,
+                500,
+                $jamMulai->toIso8601String(),
+                $jamSelesai->toIso8601String()
+            );
 
-            if ($agregat === null || $agregat->avg_ph === null) {
+            if (empty($readings)) {
                 continue;
             }
 
-            SensorDataHourly::updateOrCreate(
-                ['node_id' => $node->id, 'hour' => $jamMulai],
-                [
-                    'avg_ph' => round($agregat->avg_ph, 2),
-                    'avg_temp' => round($agregat->avg_temp, 2),
-                    'avg_turbidity' => round($agregat->avg_turbidity, 2),
-                ]
-            );
+            $count = count($readings);
+            $sumPh = 0;
+            $sumTemp = 0;
+            $sumTurbidity = 0;
+            $sumHumidity = 0;
+            $sumWaterLevel = 0;
 
+            foreach ($readings as $r) {
+                $sumPh += (float) ($r['ph'] ?? 0);
+                $sumTemp += (float) ($r['temp'] ?? 0);
+                $sumTurbidity += (float) ($r['turbidity'] ?? 0);
+                $sumHumidity += (float) ($r['humidity'] ?? 0);
+                $sumWaterLevel += (float) ($r['water_level'] ?? 0);
+            }
+
+            $averages = [
+                'ph' => round($sumPh / $count, 2),
+                'temp' => round($sumTemp / $count, 2),
+                'turbidity' => round($sumTurbidity / $count, 2),
+                'humidity' => round($sumHumidity / $count, 2),
+                'water_level' => round($sumWaterLevel / $count, 2),
+            ];
+
+            $hourlyRepo->upsertHourly($nodeId, $hourIso, $averages, $count, $node['user_id'] ?? null);
             $jumlahDiagregasi++;
         }
 

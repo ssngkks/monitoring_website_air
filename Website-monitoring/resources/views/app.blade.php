@@ -6,9 +6,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name', 'AquaMonitor') }} - Water Monitoring System</title>
     @fonts
-    @vite(['resources/css/app.css', 'resources/js/app.tsx'])
+    @vite(['frontend/src/main.tsx'])
 </head>
 <body class="antialiased bg-[#f8fafc] dark:bg-[#0a0a0a]">
-    <div id="app"></div>
+    <div id="root"></div>
 </body>
 </html>

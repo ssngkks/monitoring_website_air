@@ -9,7 +9,6 @@ const translations = {
       alerts: 'Alerts & Notifications',
       reports: 'Reports & Data',
       settings: 'Settings',
-      guide: 'User Guide',
     },
     header: { title: 'Water Monitoring System' },
     logout: 'Logout',
@@ -70,11 +69,10 @@ const translations = {
   },
   id: {
     nav: {
-      dashboard: 'Dashboard',
+      dashboard: 'Dasbor',
       alerts: 'Peringatan & Notifikasi',
-      reports: 'Laporan & Data',
+      reports: 'Laporan & Data Sensor',
       settings: 'Pengaturan',
-      guide: 'Panduan Pengguna',
     },
     header: { title: 'Sistem Pemantauan Air' },
     logout: 'Keluar',
@@ -146,7 +144,7 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const stored = (localStorage.getItem('language') as Language) || 'en';
+  const stored = (localStorage.getItem('language') as Language) || 'id';
   const [language, setLanguageState] = useState<Language>(stored);
 
   const setLanguage = (lang: Language) => {

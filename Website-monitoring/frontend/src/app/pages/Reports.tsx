@@ -1,13 +1,8 @@
-import { useState } from 'react';
-import { Download, FileText, Calendar, TrendingUp, Filter, Table } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, FileText, Calendar, TrendingUp, Filter, Table, Clock, Activity, CheckCircle, Database } from 'lucide-react';
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -15,336 +10,350 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { api } from '../lib/api';
 
-const weeklyData = [
-  { day: 'Sen', ph: 7.1, temperature: 22.3, humidity: 63, turbidity: 0.71, waterLevel: 97.2 },
-  { day: 'Sel', ph: 7.3, temperature: 23.1, humidity: 66, turbidity: 0.85, waterLevel: 99.5 },
-  { day: 'Rab', ph: 7.0, temperature: 22.8, humidity: 62, turbidity: 0.68, waterLevel: 102.1 },
-  { day: 'Kam', ph: 6.8, temperature: 24.2, humidity: 70, turbidity: 1.12, waterLevel: 95.3 },
-  { day: 'Jum', ph: 7.2, temperature: 23.5, humidity: 65, turbidity: 0.79, waterLevel: 98.7 },
-  { day: 'Sab', ph: 7.4, temperature: 21.9, humidity: 60, turbidity: 0.62, waterLevel: 104.0 },
-  { day: 'Min', ph: 7.1, temperature: 22.4, humidity: 64, turbidity: 0.74, waterLevel: 100.2 },
-];
+interface ReportSummary {
+  total_records: number;
+  earliest_record: string | null;
+  latest_record: string | null;
+  sampling_interval_seconds: number;
+  parameters: string[];
+  averages: {
+    ph: number;
+    temp: number;
+    humidity: number;
+    turbidity: number;
+    water_level: number;
+  } | null;
+}
 
-const sensorDistribution = [
-  { name: 'Sensor pH', value: 1 },
-  { name: 'Sensor DHT (Suhu)', value: 1 },
-  { name: 'Sensor DHT (Humid)', value: 1 },
-  { name: 'Sensor Turbidity', value: 1 },
-  { name: 'Sensor Ultrasonik', value: 1 },
-  { name: 'Sensor Getar', value: 1 },
-];
-
-const COLORS = ['#3b82f6', '#10b981', '#06b6d4', '#f59e0b', '#8b5cf6', '#ef4444'];
-
-const tableData = [
-  { date: '2026-09-02', ph: 7.20, temperature: 22.5, humidity: 64, turbidity: 0.72, waterLevel: 98.4, vibration: 0 },
-  { date: '2026-09-01', ph: 7.15, temperature: 22.8, humidity: 63, turbidity: 0.68, waterLevel: 97.2, vibration: 0 },
-  { date: '2026-08-31', ph: 7.31, temperature: 23.1, humidity: 66, turbidity: 0.85, waterLevel: 99.5, vibration: 1 },
-  { date: '2026-08-30', ph: 6.95, temperature: 24.2, humidity: 70, turbidity: 1.12, waterLevel: 95.3, vibration: 0 },
-  { date: '2026-08-29', ph: 7.40, temperature: 21.9, humidity: 60, turbidity: 0.62, waterLevel: 104.0, vibration: 0 },
-];
+interface SensorRecord {
+  id: string;
+  date: string;
+  time: string;
+  timestamp: string;
+  ph: number;
+  temperature: number;
+  humidity: number;
+  turbidity: number;
+  water_level: number;
+  vibration: boolean;
+  ai_status: string;
+}
 
 export function Reports() {
-  const [reportType, setReportType] = useState('overview');
-  const [dateRange, setDateRange] = useState('week');
-  const [viewMode, setViewMode] = useState('charts');
+  const [summary, setSummary] = useState<ReportSummary | null>(null);
+  const [records, setRecords] = useState<SensorRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedParam, setSelectedParam] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'table' | 'charts'>('charts');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadData = async () => {
+      try {
+        const [sumRes, dataRes] = await Promise.all([
+          api.reportsSummary(),
+          api.reportsData('per_page=100'),
+        ]);
+
+        if (!cancelled) {
+          setSummary(sumRes.data);
+          setRecords(dataRes.data || []);
+        }
+      } catch (err) {
+        console.error('Gagal memuat laporan data sensor:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const downloadReport = (format: string) => {
+    if (records.length === 0) {
+      alert('Tidak ada data sensor aktual untuk diekspor.');
+      return;
+    }
+
     if (format === 'csv') {
       const csvContent = [
-        ['Tanggal', 'pH', 'Suhu (°C)', 'Kelembapan (%)', 'Kekeruhan (NTU)', 'Level Air (cm)', 'Getaran'],
-        ...tableData.map((row) => [
+        ['Tanggal', 'Waktu', 'pH Air', 'Suhu (°C)', 'Kelembapan (%)', 'Kekeruhan (NTU)', 'Level Air (cm)', 'Getaran', 'Status AI'],
+        ...records.map((row) => [
           row.date,
+          row.time,
           row.ph,
           row.temperature,
           row.humidity,
           row.turbidity,
-          row.waterLevel,
-          row.vibration === 1 ? 'Terdeteksi' : 'Normal',
+          row.water_level,
+          row.vibration ? 'Terdeteksi' : 'Normal',
+          row.ai_status,
         ]),
       ]
         .map((row) => row.join(','))
         .join('\n');
 
-      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `water-monitoring-report-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `laporan-sensor-air-${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
-    } else if (format === 'pdf') {
-      alert('Ekspor PDF akan diimplementasikan di sini');
-    } else if (format === 'excel') {
-      alert('Ekspor Excel akan diimplementasikan di sini');
     }
   };
+
+  const formatDateTime = (isoString: string | null) => {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    return (
+      d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) +
+      ' ' +
+      d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) +
+      ' WIB'
+    );
+  };
+
+  // Format data untuk grafik kronologis (lama ke baru)
+  const chartData = records.slice().reverse().map((r) => ({
+    time: r.time,
+    ph: r.ph,
+    turbidity: r.turbidity,
+    temperature: r.temperature,
+    humidity: r.humidity,
+    waterLevel: r.water_level,
+  }));
 
   return (
     <div className="p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Laporan & Data Sensor</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Lihat, analisis, dan unduh laporan komprehensif dari semua sensor
-        </p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Laporan & Data Riwayat Sensor</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Analisis data aktual dari perangkat sensor ESP32 yang tersimpan di database
+          </p>
+        </div>
+
+        <button
+          onClick={() => downloadReport('csv')}
+          disabled={records.length === 0}
+          className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          Ekspor Data CSV
+        </button>
       </div>
 
-      {/* Controls */}
-      <div className="mb-6 grid gap-4 lg:grid-cols-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Jenis Laporan</label>
-          <select
-            value={reportType}
-            onChange={(e) => setReportType(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
+      {/* Info Integritas Data Aktual Database */}
+      <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50/70 p-5 dark:border-blue-900/60 dark:bg-blue-950/30">
+        <div className="flex items-center gap-2 mb-3">
+          <Database className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <h3 className="text-sm font-bold text-blue-900 dark:text-blue-200">
+            Ringkasan Ketersediaan Data Riil Database
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-xs">
+          <div>
+            <span className="text-gray-500 dark:text-gray-400">Total Rekaman Data:</span>
+            <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
+              {summary?.total_records ?? 0} data
+            </p>
+          </div>
+
+          <div>
+            <span className="text-gray-500 dark:text-gray-400">Periode Data Awal:</span>
+            <p className="mt-1 font-semibold text-gray-800 dark:text-gray-200">
+              {formatDateTime(summary?.earliest_record || null)}
+            </p>
+          </div>
+
+          <div>
+            <span className="text-gray-500 dark:text-gray-400">Periode Data Terakhir:</span>
+            <p className="mt-1 font-semibold text-gray-800 dark:text-gray-200">
+              {formatDateTime(summary?.latest_record || null)}
+            </p>
+          </div>
+
+          <div>
+            <span className="text-gray-500 dark:text-gray-400">Rata-rata Interval Pengiriman:</span>
+            <p className="mt-1 font-semibold text-gray-800 dark:text-gray-200">
+              {summary?.sampling_interval_seconds ? `~${summary.sampling_interval_seconds} detik` : 'Periodik'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Rata-rata Parameter Aktual */}
+      {summary?.averages && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5 text-xs">
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <span className="text-gray-500">Rata-rata pH</span>
+            <p className="mt-1 text-lg font-bold text-blue-600">{summary.averages.ph} pH</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <span className="text-gray-500">Rata-rata Suhu</span>
+            <p className="mt-1 text-lg font-bold text-emerald-600">{summary.averages.temp} °C</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <span className="text-gray-500">Rata-rata Kelembapan</span>
+            <p className="mt-1 text-lg font-bold text-amber-600">{summary.averages.humidity} %</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <span className="text-gray-500">Rata-rata Kekeruhan</span>
+            <p className="mt-1 text-lg font-bold text-orange-600">{summary.averages.turbidity} NTU</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <span className="text-gray-500">Rata-rata Ketinggian Air</span>
+            <p className="mt-1 text-lg font-bold text-indigo-600">{summary.averages.water_level} cm</p>
+          </div>
+        </div>
+      )}
+
+      {/* Toggle Tampilan & Filter */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
+          <button
+            onClick={() => setViewMode('charts')}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'charts'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400'
+            }`}
           >
-            <option value="overview">Ringkasan Sistem</option>
-            <option value="ph">Kualitas pH</option>
-            <option value="dht">Suhu & Kelembapan (DHT)</option>
-            <option value="turbidity">Kekeruhan Air</option>
-            <option value="level">Level Air (Ultrasonik)</option>
-            <option value="vibration">Riwayat Getaran</option>
+            <TrendingUp className="h-3.5 w-3.5" />
+            Grafik Tren
+          </button>
+          <button
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'table'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400'
+            }`}
+          >
+            <Table className="h-3.5 w-3.5" />
+            Tabel Data ({records.length})
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Parameter:</span>
+          <select
+            value={selectedParam}
+            onChange={(e) => setSelectedParam(e.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          >
+            <option value="all">Semua Parameter</option>
+            <option value="ph">pH Air</option>
+            <option value="turbidity">Kekeruhan</option>
+            <option value="temperature">Suhu</option>
+            <option value="humidity">Kelembapan</option>
+            <option value="waterLevel">Ketinggian Air</option>
           </select>
         </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Rentang Waktu</label>
-          <select
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <option value="today">Hari Ini</option>
-            <option value="week">7 Hari Terakhir</option>
-            <option value="month">30 Hari Terakhir</option>
-            <option value="quarter">3 Bulan Terakhir</option>
-            <option value="year">Setahun Terakhir</option>
-            <option value="custom">Kustom</option>
-          </select>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Tampilan</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode('charts')}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                viewMode === 'charts'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
-              }`}
-            >
-              <TrendingUp className="mx-auto h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
-              }`}
-            >
-              <Table className="mx-auto h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Ekspor Data</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => downloadReport('csv')}
-              className="flex-1 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
-            >
-              CSV
-            </button>
-            <button
-              onClick={() => downloadReport('pdf')}
-              className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
-            >
-              PDF
-            </button>
-            <button
-              onClick={() => downloadReport('excel')}
-              className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-            >
-              Excel
-            </button>
-          </div>
-        </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">pH Rata-rata</p>
-              <p className="mt-1 text-2xl font-bold">7.14</p>
-              <p className="mt-1 text-xs text-green-600">Normal (6.5–8.5)</p>
-            </div>
-            
-          </div>
+      {/* Konten Utama: Grafik atau Tabel */}
+      {loading ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
+          <Activity className="mx-auto h-8 w-8 text-blue-500 animate-spin" />
+          <p className="mt-3 text-sm font-medium text-gray-500">Memuat rekaman database...</p>
         </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Suhu Rata-rata</p>
-              <p className="mt-1 text-2xl font-bold">22.8°C</p>
-              <p className="mt-1 text-xs text-green-600">+0.3°C minggu lalu</p>
-            </div>
-            
-          </div>
+      ) : records.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
+          <FileText className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
+          <p className="mt-4 text-base font-bold text-gray-700 dark:text-gray-300">
+            Tidak Ada Data Sensor Tercatat
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Database belum memiliki rekaman data sensor pada rentang waktu ini.
+          </p>
         </div>
+      ) : viewMode === 'charts' ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="mb-4 text-base font-bold text-gray-900 dark:text-white">
+            Grafik Kronologis Data Aktual Sensor
+          </h3>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Kekeruhan Maks.</p>
-              <p className="mt-1 text-2xl font-bold">1.12 NTU</p>
-              <p className="mt-1 text-xs text-yellow-600">Mendekati batas</p>
-            </div>
-            
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Getaran Terdeteksi</p>
-              <p className="mt-1 text-2xl font-bold">1×</p>
-              <p className="mt-1 text-xs text-green-600">Dalam 7 hari</p>
-            </div>
-            
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      {viewMode === 'charts' ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* pH Trend */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-4 text-lg font-semibold">Tren pH Mingguan</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart id="reports-ph-chart" data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="day" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" domain={[6.5, 8]} />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.98)', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                <Line type="monotone" dataKey="ph" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 4 }} name="pH" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Turbidity & Water Level */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-4 text-lg font-semibold">Kekeruhan & Level Air</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart id="reports-turbidity-level-chart" data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="day" stroke="#6b7280" />
-                <YAxis yAxisId="left" stroke="#f59e0b" />
-                <YAxis yAxisId="right" orientation="right" stroke="#06b6d4" />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.98)', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="turbidity" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b', r: 4 }} name="Turbidity (NTU)" />
-                <Line yAxisId="right" type="monotone" dataKey="waterLevel" stroke="#06b6d4" strokeWidth={2} dot={{ fill: '#06b6d4', r: 4 }} name="Level Air (cm)" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Temperature & Humidity (DHT) */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-4 text-lg font-semibold">Suhu & Kelembapan (DHT)</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart id="reports-dht-chart" data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="day" stroke="#6b7280" />
-                <YAxis yAxisId="left" stroke="#10b981" />
-                <YAxis yAxisId="right" orientation="right" stroke="#8b5cf6" />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.98)', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-                <Legend />
-                <Bar yAxisId="left" dataKey="temperature" fill="#10b981" radius={[4, 4, 0, 0]} name="Suhu (°C)" />
-                <Bar yAxisId="right" dataKey="humidity" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Kelembapan (%)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Sensor Distribution */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-4 text-lg font-semibold">Distribusi Sensor Aktif</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={sensorDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name }) => name}
-                  outerRadius={90}
-                  dataKey="value"
-                >
-                  {sensorDistribution.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <ResponsiveContainer width="100%" height={380}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '11px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '11px' }} />
+              <Tooltip />
+              <Legend />
+              {(selectedParam === 'all' || selectedParam === 'ph') && (
+                <Line type="monotone" dataKey="ph" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="pH Air" />
+              )}
+              {(selectedParam === 'all' || selectedParam === 'turbidity') && (
+                <Line type="monotone" dataKey="turbidity" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Kekeruhan (NTU)" />
+              )}
+              {(selectedParam === 'all' || selectedParam === 'temperature') && (
+                <Line type="monotone" dataKey="temperature" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Suhu (°C)" />
+              )}
+              {(selectedParam === 'all' || selectedParam === 'humidity') && (
+                <Line type="monotone" dataKey="humidity" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} name="Kelembapan (%)" />
+              )}
+              {(selectedParam === 'all' || selectedParam === 'waterLevel') && (
+                <Line type="monotone" dataKey="waterLevel" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} name="Level Air (cm)" />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       ) : (
-        /* Table View */
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-800">
+            <table className="w-full text-left text-xs text-gray-600 dark:text-gray-300">
+              <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                 <tr>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Tanggal</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">pH</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Suhu (°C)</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Kelembapan (%)</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Turbidity (NTU)</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Level Air (cm)</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Getaran</th>
+                  <th className="px-4 py-3">Tanggal</th>
+                  <th className="px-4 py-3">Waktu</th>
+                  <th className="px-4 py-3">pH Air</th>
+                  <th className="px-4 py-3">Suhu</th>
+                  <th className="px-4 py-3">Kelembapan</th>
+                  <th className="px-4 py-3">Kekeruhan</th>
+                  <th className="px-4 py-3">Level Air</th>
+                  <th className="px-4 py-3">Getaran</th>
+                  <th className="px-4 py-3">Status AI</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                {tableData.map((row, index) => (
-                  <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-5 py-4 text-sm font-medium text-gray-900 dark:text-white">{row.date}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-400">{row.ph.toFixed(2)}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-400">{row.temperature}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-400">{row.humidity}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-400">{row.turbidity.toFixed(2)}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-400">{row.waterLevel}</td>
-                    <td className="px-5 py-4 text-sm">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${row.vibration ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'}`}>
-                        {row.vibration ? 'Terdeteksi' : 'Normal'}
+                {records.map((r, idx) => (
+                  <tr key={r.id || idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/50">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{r.date}</td>
+                    <td className="px-4 py-3 font-mono">{r.time}</td>
+                    <td className="px-4 py-3">{r.ph.toFixed(2)}</td>
+                    <td className="px-4 py-3">{r.temperature.toFixed(1)} °C</td>
+                    <td className="px-4 py-3">{r.humidity.toFixed(1)} %</td>
+                    <td className="px-4 py-3">{r.turbidity.toFixed(2)} NTU</td>
+                    <td className="px-4 py-3">{r.water_level} cm</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          r.vibration
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                            : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+                        }`}
+                      >
+                        {r.vibration ? 'Terdeteksi' : 'Normal'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-950 dark:text-blue-400">
+                        {r.ai_status}
                       </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="border-t border-gray-200 p-6 dark:border-gray-800">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Menampilkan {tableData.length} data · Total: 150 data tersedia
-              </p>
-              <button
-                onClick={() => downloadReport('csv')}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-              >
-                <Download className="h-4 w-4" />
-                Unduh Dataset Lengkap
-              </button>
-            </div>
           </div>
         </div>
       )}

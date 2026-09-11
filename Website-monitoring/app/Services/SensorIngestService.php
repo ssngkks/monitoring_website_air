@@ -2,80 +2,224 @@
 
 namespace App\Services;
 
-use App\Events\AlertCreated;
-use App\Events\SensorDataReceived;
 use App\Jobs\KirimNotifikasiAlert;
-use App\Models\Alert;
-use App\Models\Node;
-use App\Models\SensorData;
-use Illuminate\Support\Facades\DB;
+use App\Jobs\KirimNotifikasiRecovery;
+use App\Repositories\AlertRepository;
+use App\Repositories\NodeAlertStateRepository;
+use App\Repositories\NodeLiveRepository;
+use App\Repositories\NodeRepository;
+use App\Repositories\NodeThresholdRepository;
+use App\Repositories\SensorDataRepository;
 use Illuminate\Support\Facades\Log;
 
 class SensorIngestService
 {
+    public function __construct(
+        protected SensorDataRepository $sensorRepo,
+        protected NodeRepository $nodeRepo,
+        protected AlertRepository $alertRepo,
+        protected NodeLiveRepository $nodeLiveRepo,
+        protected NodeAlertStateRepository $alertStateRepo,
+        protected NodeThresholdRepository $thresholdRepo,
+    ) {
+    }
+
     /**
-     * Ingest sensor data: save, update last_seen, create alert, dispatch job, broadcast.
-     * Returns [SensorData $sensorData, ?Alert $alert]
+     * Ingest sensor data: simpan ke Firestore, update last_seen & nodes_live,
+     * evaluasi ambang batas sensor, perbarui state alert, dan kirim notifikasi jika diperlukan.
+     *
+     * @param array $node Data node dari VerifyNodeToken
+     * @param array $data Data sensor terverifikasi
+     * @return array [array $sensorData, ?array $alertData]
      */
-    public function ingest(Node $node, array $data): array
+    public function ingest(array $node, array $data): array
     {
+        $nodeId = (string) ($node['id'] ?? '');
+        $userId = (string) ($node['user_id'] ?? '');
+
         $vibrationRms = (float) ($data['vibration_rms'] ?? 0);
-        $threshold = (float) config('watermonitoring.vibration_rms_threshold', 0.30);
-        $vibration = $vibrationRms >= $threshold;
+        $thresholdVib = (float) config('watermonitoring.vibration_rms_threshold', 0.30);
+        $vibration = $vibrationRms >= $thresholdVib || (!empty($data['vibration']) && $data['vibration'] === true);
 
         $aiStatus = $data['ai_status'] ?? 'Normal';
 
-        $sensorData = DB::transaction(function () use ($node, $data, $vibration, $aiStatus) {
-            $sensor = SensorData::create([
-                'node_id' => $node->id,
-                'ph' => $data['ph'] ?? null,
-                'temp' => $data['temp'] ?? null,
-                'humidity' => $data['humidity'] ?? null,
-                'turbidity' => $data['turbidity'] ?? null,
-                'water_level' => $data['water_level'] ?? null,
-                'vibration' => $vibration,
-                'ai_status' => $aiStatus,
-            ]);
+        // 1. Simpan pembacaan sensor ke Firestore
+        $readingPayload = [
+            'node_id' => $nodeId,
+            'user_id' => $userId,
+            'ph' => isset($data['ph']) ? (float) $data['ph'] : null,
+            'temp' => isset($data['temp']) ? (float) $data['temp'] : (isset($data['suhu']) ? (float) $data['suhu'] : null),
+            'humidity' => isset($data['humidity']) ? (float) $data['humidity'] : (isset($data['kelembapan']) ? (float) $data['kelembapan'] : null),
+            'turbidity' => isset($data['turbidity']) ? (float) $data['turbidity'] : null,
+            'water_level' => isset($data['water_level']) ? (float) $data['water_level'] : (isset($data['ketinggian_air']) ? (float) $data['ketinggian_air'] : null),
+            'vibration' => $vibration,
+            'vibration_rms' => $vibrationRms,
+            'ai_status' => $aiStatus,
+            'rssi' => $data['rssi'] ?? null,
+            'snr' => $data['snr'] ?? null,
+        ];
 
-            $node->update(['last_seen_at' => now()]);
+        $readingId = $this->sensorRepo->createReading($readingPayload);
+        $readingPayload['id'] = $readingId;
 
-            return $sensor;
-        });
+        // 2. Update status node & mirror live data
+        $this->nodeRepo->updateLastSeen($nodeId);
+        $this->nodeLiveRepo->updateLiveData($nodeId, array_merge($readingPayload, [
+            'kode_node' => $node['kode_node'] ?? 'ESP32-WATER-01',
+            'nama_lokasi' => $node['nama_lokasi'] ?? 'Titik Pantau Sensor Utama',
+        ]), $userId);
+
+        // 3. Evaluasi Ambang Batas Sensor & State Machine Alert
+        $thresholds = $this->thresholdRepo->getByNodeId($nodeId);
+        $anomalies = [];
+
+        // Evaluasi pH
+        $ph = $readingPayload['ph'];
+        if ($ph !== null) {
+            $minPh = (float) ($thresholds['ph_min'] ?? 6.5);
+            $maxPh = (float) ($thresholds['ph_max'] ?? 8.5);
+            if ($ph < $minPh) {
+                $anomalies[] = [
+                    'param' => 'ph',
+                    'severity' => ($ph < 5.0 || $ph < 0) ? 'critical' : 'warning',
+                    'pesan' => "pH air abnormal ({$ph}), di bawah batas aman minimum ({$minPh}).",
+                ];
+            } elseif ($ph > $maxPh) {
+                $anomalies[] = [
+                    'param' => 'ph',
+                    'severity' => ($ph > 9.5) ? 'critical' : 'warning',
+                    'pesan' => "pH air abnormal ({$ph}), melebihi batas aman maksimum ({$maxPh}).",
+                ];
+            }
+        }
+
+        // Evaluasi Kekeruhan (Turbidity)
+        $turbidity = $readingPayload['turbidity'];
+        if ($turbidity !== null) {
+            $maxTurb = (float) ($thresholds['turbidity_max'] ?? 1.5);
+            if ($turbidity > $maxTurb) {
+                $anomalies[] = [
+                    'param' => 'turbidity',
+                    'severity' => ($turbidity > 5.0) ? 'critical' : 'warning',
+                    'pesan' => "Kekeruhan air tinggi ({$turbidity} NTU), melebihi batas normal ({$maxTurb} NTU).",
+                ];
+            }
+        }
+
+        // Evaluasi Suhu
+        $temp = $readingPayload['temp'];
+        if ($temp !== null) {
+            $maxTemp = (float) ($thresholds['temperature_max'] ?? 28.0);
+            if ($temp > $maxTemp) {
+                $anomalies[] = [
+                    'param' => 'temperature',
+                    'severity' => ($temp > 40.0) ? 'critical' : 'warning',
+                    'pesan' => "Suhu air/sensor tinggi ({$temp}°C), melebihi batas aman ({$maxTemp}°C).",
+                ];
+            }
+        }
+
+        // Evaluasi Getaran
+        if ($vibration) {
+            $anomalies[] = [
+                'param' => 'vibration',
+                'severity' => 'warning',
+                'pesan' => "Getaran mekanik terdeteksi pada sensor ESP32.",
+            ];
+        }
+
+        // Evaluasi Ketinggian Air
+        $wl = $readingPayload['water_level'];
+        if ($wl !== null && $wl > 0) {
+            $minWl = (float) ($thresholds['water_level_min'] ?? 80.0);
+            $maxWl = (float) ($thresholds['water_level_max'] ?? 130.0);
+            if ($wl < $minWl) {
+                $anomalies[] = [
+                    'param' => 'water_level',
+                    'severity' => 'warning',
+                    'pesan' => "Level air rendah ({$wl} cm), di bawah batas minimum ({$minWl} cm).",
+                ];
+            } elseif ($wl > $maxWl) {
+                $anomalies[] = [
+                    'param' => 'water_level',
+                    'severity' => 'critical',
+                    'pesan' => "Level air meluap ({$wl} cm), melebihi batas maksimum ({$maxWl} cm).",
+                ];
+            }
+        }
+
+        // Evaluasi Status AI jika ada
+        if (in_array($aiStatus, ['Bahaya', 'Anomali'], true)) {
+            $anomalies[] = [
+                'param' => 'ai_status',
+                'severity' => $aiStatus === 'Bahaya' ? 'critical' : 'warning',
+                'pesan' => "Analisis AI mendeteksi status: {$aiStatus} pada data sensor.",
+            ];
+        }
 
         $alert = null;
+        $currentState = $this->alertStateRepo->getState($nodeId);
+        $previousSeverity = $currentState['current_severity'] ?? 'normal';
 
-        if (in_array($aiStatus, ['Bahaya', 'Anomali'], true)) {
-            $alert = $this->createAlert($node, $aiStatus);
-            try {
-                KirimNotifikasiAlert::dispatch($alert);
-            } catch (\Throwable $e) {
-                Log::error('Gagal dispatch KirimNotifikasiAlert', ['alert_id' => $alert->id, 'error' => $e->getMessage()]);
+        if (! empty($anomalies)) {
+            // Tentukan keparahan tertinggi
+            $hasCritical = false;
+            $messages = [];
+            foreach ($anomalies as $ano) {
+                if ($ano['severity'] === 'critical') {
+                    $hasCritical = true;
+                }
+                $messages[] = $ano['pesan'];
             }
+
+            $severity = $hasCritical ? 'critical' : 'warning';
+            $mainMessage = implode(' | ', array_slice($messages, 0, 2));
+
+            $alertData = [
+                'node_id' => $nodeId,
+                'user_id' => $userId,
+                'pesan' => $mainMessage,
+                'severity' => $severity,
+                'status' => 'active',
+                'is_read' => false,
+            ];
+
+            $alertId = $this->alertRepo->createAlert($alertData);
+            $alertData['id'] = $alertId;
+            $alert = $alertData;
+
+            // Update State Machine
+            $this->alertStateRepo->updateState($nodeId, $severity, $anomalies[0]['param']);
+
+            // Cek Cooldown notifikasi (10 menit)
+            $cooldownMinutes = (int) config('watermonitoring.alert_cooldown_minutes', 10);
+            $inCooldown = $this->alertStateRepo->isInCooldown($nodeId, $cooldownMinutes);
+
+            if (! $inCooldown) {
+                $this->alertStateRepo->updateLastNotified($nodeId);
+                try {
+                    KirimNotifikasiAlert::dispatch($alertData, $node);
+                } catch (\Throwable $e) {
+                    Log::error('Gagal dispatch KirimNotifikasiAlert', [
+                        'alert_id' => $alertId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        } elseif ($previousSeverity !== 'normal') {
+            // Deteksi pemulihan (Recovery)
+            $this->alertStateRepo->updateState($nodeId, 'normal');
+
             try {
-                broadcast(new AlertCreated($alert));
+                KirimNotifikasiRecovery::dispatch($node, ucfirst($previousSeverity));
             } catch (\Throwable $e) {
-                Log::warning('Broadcast AlertCreated gagal', ['alert_id' => $alert->id, 'error' => $e->getMessage()]);
+                Log::error('Gagal dispatch KirimNotifikasiRecovery', [
+                    'node_id' => $nodeId,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
-        try {
-            broadcast(new SensorDataReceived($sensorData));
-        } catch (\Throwable $e) {
-            Log::warning('Broadcast SensorDataReceived gagal', ['sensor_id' => $sensorData->id, 'error' => $e->getMessage()]);
-        }
-
-        return [$sensorData, $alert];
-    }
-
-    private function createAlert(Node $node, string $aiStatus): Alert
-    {
-        $severity = $aiStatus === 'Bahaya' ? 'critical' : 'warning';
-
-        return Alert::create([
-            'node_id' => $node->id,
-            'pesan' => "Status AI: {$aiStatus} terdeteksi pada node {$node->kode_node} ({$node->nama_lokasi}).",
-            'severity' => $severity,
-            'is_read' => false,
-        ]);
+        return [$readingPayload, $alert];
     }
 }

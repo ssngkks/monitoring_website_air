@@ -65,6 +65,40 @@ export const api = {
     ),
   markAlertRead: (id: string | number) =>
     apiFetch<{ data: AlertData }>(`/alerts/${id}/read`, { method: 'PATCH' }),
+  reportsSummary: () =>
+    apiFetch<{
+      data: {
+        total_records: number;
+        earliest_record: string | null;
+        latest_record: string | null;
+        sampling_interval_seconds: number;
+        parameters: string[];
+        averages: {
+          ph: number;
+          temp: number;
+          humidity: number;
+          turbidity: number;
+          water_level: number;
+        } | null;
+      };
+    }>('/reports/summary'),
+  reportsData: (params = '') =>
+    apiFetch<{
+      data: {
+        id: string;
+        date: string;
+        time: string;
+        timestamp: string;
+        ph: number;
+        temperature: number;
+        humidity: number;
+        turbidity: number;
+        water_level: number;
+        vibration: boolean;
+        ai_status: string;
+      }[];
+      meta: { total: number; has_more: boolean };
+    }>(`/reports/data${params ? `?${params}` : ''}`),
 };
 
 export interface User {

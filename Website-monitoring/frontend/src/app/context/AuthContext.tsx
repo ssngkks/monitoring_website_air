@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 function withAvatar(user: ApiUser): User {
   return {
     ...user,
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
+    avatar: '',
   };
 }
 
@@ -52,29 +52,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      const response = await api.login(email, password);
-      const nextUser = withAvatar(response.data.user);
-      localStorage.setItem('api_token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(nextUser));
-      setUser(nextUser);
-      return true;
-    } catch {
-      return false;
-    }
+    const response = await api.login(email, password);
+    const nextUser = withAvatar(response.data.user);
+    localStorage.setItem('api_token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(nextUser));
+    setUser(nextUser);
+    return true;
   };
 
   const signup = async (name: string, email: string, password: string): Promise<boolean> => {
-    try {
-      const response = await api.register(name, email, password);
-      const nextUser = withAvatar(response.data.user);
-      localStorage.setItem('api_token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(nextUser));
-      setUser(nextUser);
-      return true;
-    } catch {
-      return false;
-    }
+    const response = await api.register(name, email, password);
+    const nextUser = withAvatar(response.data.user);
+    localStorage.setItem('api_token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(nextUser));
+    setUser(nextUser);
+    return true;
   };
 
   const logout = () => {

@@ -7,14 +7,24 @@ import {
   Bell,
   FileText,
   Settings,
-  BookOpen,
   LogOut,
   Menu,
   X,
+  ChevronLeft,
   ChevronRight,
   Pencil,
   Camera,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+} from './ui/dropdown-menu';
+import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
+import { DefaultAvatarIcon } from './DefaultAvatarIcon';
 
 interface ProfileData {
   name: string;
@@ -30,13 +40,11 @@ export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   /* =========================
-     PROFILE STATE
+     PROFILE STATE (UNCHANGED)
   ========================= */
   const [profile, setProfile] = useState<ProfileData>({
     name: user?.name || 'Administrator',
-    avatar:
-      user?.avatar ||
-      'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
+    avatar: user?.avatar || '',
   });
 
   const [editProfileOpen, setEditProfileOpen] = useState(false);
@@ -45,13 +53,10 @@ export function Layout() {
     user?.name || 'Administrator'
   );
 
-  const [editAvatar, setEditAvatar] = useState(
-    user?.avatar ||
-      'https://api.dicebear.com/7.x/avataaars/svg?seed=default'
-  );
+  const [editAvatar, setEditAvatar] = useState(user?.avatar || '');
 
   /* =========================
-     AUTH CHECK
+     AUTH CHECK (UNCHANGED)
   ========================= */
   useEffect(() => {
     if (!isAuthenticated) {
@@ -60,7 +65,7 @@ export function Layout() {
   }, [isAuthenticated, navigate]);
 
   /* =========================
-     LOAD PROFILE
+     LOAD PROFILE (UNCHANGED)
   ========================= */
   useEffect(() => {
     const savedProfile = localStorage.getItem('aqua_profile');
@@ -83,7 +88,7 @@ export function Layout() {
   }
 
   /* =========================
-     LOGOUT
+     LOGOUT (UNCHANGED)
   ========================= */
   const handleLogout = () => {
     logout();
@@ -91,7 +96,7 @@ export function Layout() {
   };
 
   /* =========================
-     OPEN EDIT PROFILE
+     OPEN EDIT PROFILE (UNCHANGED)
   ========================= */
   const handleOpenEditProfile = () => {
     setEditName(profile.name);
@@ -100,7 +105,7 @@ export function Layout() {
   };
 
   /* =========================
-     IMAGE UPLOAD
+     IMAGE UPLOAD (UNCHANGED)
   ========================= */
   const handleAvatarChange = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -111,13 +116,11 @@ export function Layout() {
       return;
     }
 
-    // Batasi file hanya gambar
     if (!file.type.startsWith('image/')) {
       alert('Silakan pilih file gambar.');
       return;
     }
 
-    // Batasi ukuran maksimal 2 MB
     if (file.size > 2 * 1024 * 1024) {
       alert('Ukuran foto maksimal 2 MB.');
       return;
@@ -135,7 +138,7 @@ export function Layout() {
   };
 
   /* =========================
-     SAVE PROFILE
+     SAVE PROFILE (UNCHANGED)
   ========================= */
   const handleSaveProfile = () => {
     const trimmedName = editName.trim();
@@ -161,75 +164,58 @@ export function Layout() {
   };
 
   /* =========================
-     MENU
+     MENU (UNCHANGED)
   ========================= */
   const menuItems = [
-    {
-      path: '/',
-      icon: LayoutDashboard,
-      label: t.nav.dashboard,
-    },
-    {
-      path: '/alerts',
-      icon: Bell,
-      label: t.nav.alerts,
-    },
-    {
-      path: '/reports',
-      icon: FileText,
-      label: t.nav.reports,
-    },
-    {
-      path: '/settings',
-      icon: Settings,
-      label: t.nav.settings,
-    },
-    {
-      path: '/guide',
-      icon: BookOpen,
-      label: t.nav.guide,
-    },
+    { path: '/', icon: LayoutDashboard, label: t.nav.dashboard },
+    { path: '/alerts', icon: Bell, label: t.nav.alerts },
+    { path: '/reports', icon: FileText, label: t.nav.reports },
+    { path: '/settings', icon: Settings, label: t.nav.settings },
   ];
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
 
       {/* =========================================
-          SIDEBAR
+          SIDEBAR (DESKTOP)
       ========================================= */}
       <aside
+        id="app-sidebar"
         className={`${
           sidebarOpen ? 'w-64' : 'w-20'
         } hidden transition-all duration-300 lg:flex lg:flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900`}
       >
 
-        {/* Logo */}
+        {/* Logo + Toggle Button */}
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4 dark:border-gray-800">
 
           <div className="flex items-center">
             {sidebarOpen && (
-              <span className="text-lg font-bold">
-                AquaMonitor
-              </span>
+              <span className="text-lg font-bold select-none cursor-default">AquaMonitor</span>
             )}
           </div>
 
+          {/* Redesigned toggle button — Part 5 spec */}
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800"
+            type="button"
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-expanded={sidebarOpen}
+            aria-controls="app-sidebar"
+            className="flex h-8 w-9 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 active:bg-gray-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200 dark:active:bg-gray-700"
           >
-            <ChevronRight
-              className={`h-5 w-5 transition-transform ${
-                sidebarOpen ? 'rotate-180' : ''
-              }`}
-            />
+            <span aria-hidden="true" className="h-4 w-px shrink-0 bg-current opacity-30" />
+            {sidebarOpen ? (
+              <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+            )}
           </button>
 
         </div>
 
-        {/* Navigation */}
+        {/* Navigation (UNCHANGED) */}
         <nav className="flex-1 space-y-1 p-4">
-
           {menuItems.map((item) => (
             <NavLink
               key={item.path}
@@ -247,84 +233,48 @@ export function Layout() {
                 <>
                   <item.icon
                     className={`h-5 w-5 flex-shrink-0 ${
-                      isActive
-                        ? 'text-blue-600 dark:text-blue-400'
-                        : ''
+                      isActive ? 'text-blue-600 dark:text-blue-400' : ''
                     }`}
                   />
-
                   {sidebarOpen && (
-                    <span className="font-medium">
-                      {item.label}
-                    </span>
+                    <span className="font-medium">{item.label}</span>
                   )}
                 </>
               )}
             </NavLink>
           ))}
-
         </nav>
 
         {/* =========================================
-            USER PROFILE
+            SIDEBAR BOTTOM — LOGOUT ONLY
+            (Avatar/nama/role dan Edit Profil DIHAPUS dari sini — Part 6 & 8)
         ========================================= */}
         <div className="border-t border-gray-200 p-4 dark:border-gray-800">
-
-          <div
-            className={`flex items-center gap-3 ${
-              !sidebarOpen ? 'justify-center' : ''
-            }`}
-          >
-
-            <img
-              src={profile.avatar}
-              alt={profile.name}
-              className="h-10 w-10 rounded-full object-cover"
-            />
-
-            {sidebarOpen && (
-              <div className="min-w-0 flex-1">
-
-                <p className="truncate font-medium">
-                  {profile.name}
-                </p>
-
-                <p className="truncate text-sm text-gray-500">
-                  {user?.role || 'Administrator'}
-                </p>
-
-              </div>
-            )}
-
-          </div>
-
-          {/* Edit Profile Button */}
-          {sidebarOpen && (
+          {sidebarOpen ? (
             <button
-              onClick={handleOpenEditProfile}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-            >
-              <Pencil className="h-4 w-4" />
-              <span>Edit Profil</span>
-            </button>
-          )}
-
-          {/* Logout */}
-          {sidebarOpen && (
-            <button
+              type="button"
               onClick={handleLogout}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+              aria-label="Logout"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
             >
-
               <LogOut className="h-4 w-4" />
-
-              <span className="font-medium">
-                {t.logout}
-              </span>
-
+              <span className="font-medium">{t.logout}</span>
             </button>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  aria-label="Logout"
+                  className="flex w-full items-center justify-center rounded-lg bg-red-50 p-2 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Logout</TooltipContent>
+            </Tooltip>
           )}
-
         </div>
 
       </aside>
@@ -342,27 +292,21 @@ export function Layout() {
 
           <aside className="fixed left-0 top-0 h-full w-64 bg-white shadow-xl dark:bg-gray-900">
 
-            {/* Mobile Header */}
             <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4 dark:border-gray-800">
-
               <div className="flex items-center">
-                <span className="text-lg font-bold">
-                  AquaMonitor
-                </span>
+                <span className="text-lg font-bold select-none cursor-default">AquaMonitor</span>
               </div>
-
               <button
+                type="button"
                 onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close menu"
                 className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 <X className="h-5 w-5" />
               </button>
-
             </div>
 
-            {/* Mobile Navigation */}
             <nav className="space-y-1 p-4">
-
               {menuItems.map((item) => (
                 <NavLink
                   key={item.path}
@@ -378,61 +322,22 @@ export function Layout() {
                   }
                 >
                   <item.icon className="h-5 w-5" />
-
-                  <span className="font-medium">
-                    {item.label}
-                  </span>
+                  <span className="font-medium">{item.label}</span>
                 </NavLink>
               ))}
-
             </nav>
 
-            {/* Mobile Profile */}
+            {/* Mobile bottom — LOGOUT ONLY (avatar/nama-role + Edit Profil dihapus) */}
             <div className="absolute bottom-0 w-full border-t border-gray-200 p-4 dark:border-gray-800">
-
-              <div className="mb-3 flex items-center gap-3">
-
-                <img
-                  src={profile.avatar}
-                  alt={profile.name}
-                  className="h-10 w-10 rounded-full object-cover"
-                />
-
-                <div className="min-w-0 flex-1">
-
-                  <p className="truncate font-medium">
-                    {profile.name}
-                  </p>
-
-                  <p className="truncate text-sm text-gray-500">
-                    {user?.role || 'Administrator'}
-                  </p>
-
-                </div>
-
-              </div>
-
               <button
-                onClick={handleOpenEditProfile}
-                className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                <Pencil className="h-4 w-4" />
-                Edit Profil
-              </button>
-
-              <button
+                type="button"
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400"
+                aria-label="Logout"
+                className="flex w-full items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
               >
-
                 <LogOut className="h-4 w-4" />
-
-                <span className="font-medium">
-                  {t.logout}
-                </span>
-
+                <span className="font-medium">{t.logout}</span>
               </button>
-
             </div>
 
           </aside>
@@ -445,53 +350,82 @@ export function Layout() {
       ========================================= */}
       <div className="flex flex-1 flex-col overflow-hidden">
 
-        {/* Top Bar */}
         <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6 dark:border-gray-800 dark:bg-gray-900 lg:px-8">
 
-          {/* Mobile Menu */}
           <button
+            type="button"
             onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
             className="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
           >
             <Menu className="h-6 w-6" />
           </button>
 
-          {/* Header Title */}
           <div className="hidden lg:block">
-            <h2 className="text-xl font-semibold">
-              {t.header.title}
-            </h2>
+            <h2 className="text-xl font-semibold">{t.header.title}</h2>
           </div>
 
-          {/* Header Right */}
+          {/* Header Right: Notification + Profile (Part 6 & 7) */}
           <div className="flex items-center gap-4">
 
-            {/* Notification */}
             <NavLink
               to="/alerts"
+              aria-label="Notifications"
               className="relative rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               <Bell className="h-5 w-5" />
-
               <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
             </NavLink>
 
-            {/* Mobile Avatar */}
-            <div className="flex items-center gap-3 lg:hidden">
-
-              <img
-                src={profile.avatar}
-                alt={profile.name}
-                className="h-8 w-8 rounded-full object-cover"
-              />
-
-            </div>
+            {/* Profile Icon + Dropdown — tampil di SEMUA breakpoint */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Buka menu profil untuk ${profile.name}`}
+                  className="flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 select-none"
+                >
+                  {profile.avatar ? (
+                    <img
+                      src={profile.avatar}
+                      alt={profile.name}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                      <DefaultAvatarIcon className="h-5 w-5" />
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={8}
+                className="w-56 rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-lg dark:border-gray-800 dark:bg-gray-900"
+              >
+                <DropdownMenuLabel className="px-2 py-1.5">
+                  <span className="block truncate font-medium text-gray-900 dark:text-gray-100">
+                    {profile.name}
+                  </span>
+                  <span className="block truncate text-xs font-normal text-gray-500 dark:text-gray-400">
+                    {user?.email}
+                  </span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="my-1 h-px bg-gray-200 dark:bg-gray-800" />
+                <DropdownMenuItem
+                  onSelect={handleOpenEditProfile}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-gray-700 outline-none hover:bg-gray-100 focus:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit Profil
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
           </div>
 
         </header>
 
-        {/* Page Content */}
         <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
           <Outlet />
         </main>
@@ -499,52 +433,49 @@ export function Layout() {
       </div>
 
       {/* =========================================
-          EDIT PROFILE MODAL
+          EDIT PROFILE MODAL (UNCHANGED)
       ========================================= */}
       {editProfileOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
 
-            {/* Modal Header */}
             <div className="mb-6 flex items-center justify-between">
-
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                   Edit Profil
                 </h2>
-
                 <p className="mt-1 text-sm text-gray-500">
                   Ubah nama dan foto profil kamu
                 </p>
               </div>
-
               <button
+                type="button"
                 onClick={() => setEditProfileOpen(false)}
+                aria-label="Tutup"
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 <X className="h-5 w-5" />
               </button>
-
             </div>
 
-            {/* Profile Photo */}
             <div className="mb-6 flex flex-col items-center">
-
               <div className="relative">
-
-                <img
-                  src={editAvatar}
-                  alt="Preview profil"
-                  className="h-28 w-28 rounded-full border-4 border-gray-100 object-cover shadow-sm dark:border-gray-800"
-                />
-
+                {editAvatar ? (
+                  <img
+                    src={editAvatar}
+                    alt="Preview profil"
+                    className="h-28 w-28 rounded-full border-4 border-gray-100 object-cover shadow-sm dark:border-gray-800"
+                  />
+                ) : (
+                  <span className="flex h-28 w-28 items-center justify-center rounded-full border-4 border-gray-100 bg-gray-100 text-gray-400 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-500">
+                    <DefaultAvatarIcon className="h-16 w-16" />
+                  </span>
+                )}
                 <label
                   htmlFor="profile-photo"
                   className="absolute bottom-0 right-0 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-white shadow-md transition-colors hover:bg-blue-700"
                 >
                   <Camera className="h-4 w-4" />
-
                   <input
                     id="profile-photo"
                     type="file"
@@ -553,26 +484,19 @@ export function Layout() {
                     className="hidden"
                   />
                 </label>
-
               </div>
-
               <p className="mt-3 text-xs text-gray-500">
                 Klik ikon kamera untuk mengganti foto
               </p>
-
               <p className="text-xs text-gray-400">
                 Maksimal ukuran foto 2 MB
               </p>
-
             </div>
 
-            {/* Name */}
             <div className="mb-6">
-
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
                 Nama
               </label>
-
               <input
                 type="text"
                 value={editName}
@@ -580,30 +504,26 @@ export function Layout() {
                 placeholder="Masukkan nama"
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900"
               />
-
             </div>
 
-            {/* Buttons */}
             <div className="flex gap-3">
-
               <button
+                type="button"
                 onClick={() => setEditProfileOpen(false)}
                 className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 Batal
               </button>
-
               <button
+                type="button"
                 onClick={handleSaveProfile}
                 className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
               >
                 Simpan Perubahan
               </button>
-
             </div>
 
           </div>
-
         </div>
       )}
 

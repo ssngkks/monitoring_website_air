@@ -2,13 +2,17 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Node;
+use App\Repositories\NodeRepository;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class VerifyNodeToken
 {
+    public function __construct(protected NodeRepository $nodeRepo)
+    {
+    }
+
     public function handle(Request $request, Closure $next): Response
     {
         $kodeNode = $request->input('kode_node');
@@ -20,9 +24,9 @@ class VerifyNodeToken
             ], 401);
         }
 
-        $node = Node::where('kode_node', $kodeNode)->first();
+        $node = $this->nodeRepo->findByKodeNode($kodeNode);
 
-        if (! $node || $node->status !== 'active') {
+        if (! $node || ($node['status'] ?? '') !== 'active') {
             return response()->json([
                 'message' => 'Node tidak ditemukan atau tidak aktif.',
             ], 401);
@@ -30,7 +34,7 @@ class VerifyNodeToken
 
         $incomingHash = hash('sha256', $token);
 
-        if (! hash_equals($node->api_token_hash, $incomingHash)) {
+        if (! hash_equals($node['api_token_hash'] ?? '', $incomingHash)) {
             return response()->json([
                 'message' => 'Token tidak valid.',
             ], 401);

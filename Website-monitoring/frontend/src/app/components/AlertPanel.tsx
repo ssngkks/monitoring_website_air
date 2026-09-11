@@ -41,15 +41,15 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <h3 className="mb-4 text-lg font-semibold">System Alerts</h3>
+    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <h3 className="mb-4 text-base font-bold text-gray-900 dark:text-white">Peringatan Sistem</h3>
       <div className="space-y-3">
         {alerts.length === 0 ? (
           <div className="flex items-center gap-3 rounded-lg border border-green-500/30 bg-green-500/10 p-4">
             <CheckCircle className="h-5 w-5 text-green-600" />
             <div>
-              <p className="font-medium text-green-700 dark:text-green-400">All systems operational</p>
-              <p className="text-sm text-green-600 dark:text-green-500">No alerts at this time</p>
+              <p className="font-semibold text-green-700 dark:text-green-400">Semua Sistem Normal</p>
+              <p className="text-xs text-green-600 dark:text-green-500">Tidak ada peringatan sensor saat ini</p>
             </div>
           </div>
         ) : (

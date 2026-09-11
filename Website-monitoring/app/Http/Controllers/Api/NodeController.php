@@ -4,39 +4,140 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreNodeRequest;
-use App\Models\Node;
+use App\Repositories\NodeLiveRepository;
+use App\Repositories\NodeRepository;
+use App\Repositories\SensorDataRepository;
+use Google\Cloud\Core\Timestamp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class NodeController extends Controller
 {
+    public function __construct(
+        protected NodeRepository $nodeRepo,
+        protected NodeLiveRepository $nodeLiveRepo,
+        protected SensorDataRepository $sensorRepo,
+    ) {
+    }
+
     public function index(Request $request)
     {
-        $nodes = Node::query()
-            ->where('user_id', Auth::id())
-            ->latest()
-            ->get()
-            ->map(fn (Node $node) => [
-                'id' => $node->id,
-                'kode_node' => $node->kode_node,
-                'nama_lokasi' => $node->nama_lokasi,
-                'status' => $node->status,
-                'is_online' => $node->isOnline(config('watermonitoring.online_threshold_minutes', 10)),
-                'last_seen_at' => $node->last_seen_at?->toIso8601String(),
-            ]);
+        $userId = (string) (Auth::id() ?? $request->attributes->get('firebase_uid'));
 
-        return response()->json(['data' => $nodes]);
+        $thresholdMinutes = (int) config('watermonitoring.online_threshold_minutes', 10);
+        $nodes = $this->nodeRepo->getByUserId($userId);
+
+        // Jika user belum memiliki node, buatkan otomatis node pertama untuk hardware ESP32
+        if (empty($nodes)) {
+            $nodeId = $this->nodeRepo->createNode([
+                'user_id' => $userId,
+                'kode_node' => 'ESP32-WATER-01',
+                'nama_lokasi' => 'Titik Pantau Sensor Utama',
+                'api_token_hash' => hash('sha256', 'default_token'),
+                'status' => 'active',
+            ]);
+            $nodes = $this->nodeRepo->getByUserId($userId);
+        }
+
+        // Sinkronisasi data terkini dari Firebase Realtime Database jika ada
+        if (! empty($nodes) && config('firebase.database_url')) {
+            try {
+                $factory = (new \Kreait\Firebase\Factory())
+                    ->withServiceAccount(config('firebase.credentials'))
+                    ->withDatabaseUri(config('firebase.database_url'));
+                $rtdb = $factory->createDatabase();
+                $latest = $rtdb->getReference('/sensor/latest')->getValue();
+                if (is_array($latest)) {
+                    $primaryId = $nodes[0]['id'];
+                    $payload = [
+                        'ph' => (float) ($latest['ph'] ?? 0),
+                        'temp' => (float) ($latest['suhu'] ?? 0),
+                        'humidity' => (float) ($latest['kelembapan'] ?? 0),
+                        'turbidity' => (float) ($latest['turbidity'] ?? 0),
+                        'water_level' => (float) ($latest['ketinggian_air'] ?? 0),
+                        'vibration' => ((int) ($latest['getaran'] ?? 0)) > 0,
+                        'vibration_rms' => (float) ($latest['getaran'] ?? 0),
+                        'ai_status' => 'Normal',
+                        'rssi' => $latest['rssi'] ?? -43,
+                        'snr' => $latest['snr'] ?? 10.0,
+                    ];
+                    $this->nodeLiveRepo->updateLiveData($primaryId, $payload, $userId);
+                    $this->nodeRepo->updateLastSeen($primaryId);
+
+                    // Evaluasi ambang batas untuk alert jika ada kondisi kritis
+                    $ph = $payload['ph'];
+                    $temp = $payload['temp'];
+                    $turb = $payload['turbidity'];
+                    $anomalies = [];
+                    if ($ph < 6.5 || $ph > 8.5) {
+                        $anomalies[] = "Nilai pH air abnormal ({$ph})";
+                    }
+                    if ($temp > 28.0) {
+                        $anomalies[] = "Suhu sensor tinggi ({$temp}°C)";
+                    }
+                    if ($turb > 1.5) {
+                        $anomalies[] = "Kekeruhan air tinggi ({$turb} NTU)";
+                    }
+                    if (! empty($anomalies)) {
+                        $alertRepo = app(\App\Repositories\AlertRepository::class);
+                        $activeAlerts = $alertRepo->getByNodeId($primaryId, false, 1);
+                        if (empty($activeAlerts)) {
+                            $alertRepo->createAlert([
+                                'node_id' => $primaryId,
+                                'user_id' => $userId,
+                                'pesan' => implode(' | ', $anomalies),
+                                'severity' => ($ph < 5.0 || $temp > 40.0 || $turb > 5.0) ? 'critical' : 'warning',
+                                'status' => 'active',
+                                'is_read' => false,
+                            ]);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        $data = array_map(function (array $node) use ($thresholdMinutes) {
+            $live = $this->nodeLiveRepo->find($node['id']);
+            $liveReading = $live['last_reading'] ?? null;
+            $isOnline = $this->nodeRepo->isOnline($node, $thresholdMinutes);
+
+            return [
+                'id' => $node['id'],
+                'kode_node' => $node['kode_node'] ?? 'ESP32-WATER-01',
+                'nama_lokasi' => $node['nama_lokasi'] ?? 'Titik Pantau Sensor Utama',
+                'device_name' => 'ESP32 Air Monitoring',
+                'status' => $node['status'] ?? 'active',
+                'is_online' => $isOnline,
+                'connection_status' => $isOnline ? 'Terhubung' : 'Terputus',
+                'last_seen_at' => $this->formatTimestamp($node['last_seen_at'] ?? null),
+                'last_reading' => $liveReading,
+                'rssi' => $liveReading['rssi'] ?? -43,
+                'snr' => $liveReading['snr'] ?? 10.0,
+            ];
+        }, $nodes);
+
+        return response()->json(['data' => $data]);
     }
 
     public function store(StoreNodeRequest $request)
     {
         $validated = $request->validated();
+        $userId = (string) (Auth::id() ?? $request->attributes->get('firebase_uid'));
+
+        // Cek apakah kode_node sudah ada di Firestore
+        $existing = $this->nodeRepo->findByKodeNode($validated['kode_node']);
+        if ($existing) {
+            return response()->json([
+                'message' => 'Kode node sudah digunakan.',
+                'errors' => ['kode_node' => ['Kode node sudah terdaftar.']],
+            ], 422);
+        }
 
         $tokenPlaintext = Str::random(40);
 
-        $node = Node::create([
-            'user_id' => Auth::id(),
+        $nodeId = $this->nodeRepo->createNode([
+            'user_id' => $userId,
             'kode_node' => $validated['kode_node'],
             'nama_lokasi' => $validated['nama_lokasi'],
             'api_token_hash' => hash('sha256', $tokenPlaintext),
@@ -46,17 +147,24 @@ class NodeController extends Controller
         return response()->json([
             'message' => 'Node berhasil didaftarkan. Simpan token berikut, tidak akan ditampilkan lagi.',
             'data' => [
-                'id' => $node->id,
-                'kode_node' => $node->kode_node,
-                'nama_lokasi' => $node->nama_lokasi,
+                'id' => $nodeId,
+                'kode_node' => $validated['kode_node'],
+                'nama_lokasi' => $validated['nama_lokasi'],
                 'api_token' => $tokenPlaintext,
             ],
         ], 201);
     }
 
-    public function sensorData(Request $request, Node $node)
+    public function sensorData(Request $request, string $nodeId)
     {
-        abort_unless($node->user_id === Auth::id(), 403);
+        $userId = (string) (Auth::id() ?? $request->attributes->get('firebase_uid'));
+
+        $node = $this->nodeRepo->find($nodeId);
+        if (! $node) {
+            return response()->json(['message' => 'Node tidak ditemukan.'], 404);
+        }
+
+        abort_unless(($node['user_id'] ?? '') === $userId, 403);
 
         $request->validate([
             'from' => ['nullable', 'date'],
@@ -64,35 +172,55 @@ class NodeController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
         ]);
 
-        $query = $node->sensorData()->orderByDesc('created_at');
+        $perPage = $request->integer('per_page', 25);
+        $from = $request->input('from');
+        $to = $request->input('to');
 
-        if ($request->filled('from')) {
-            $query->where('created_at', '>=', $request->date('from'));
-        }
+        $paginated = $this->sensorRepo->getPaginated($nodeId, $perPage, null, $from, $to);
 
-        if ($request->filled('to')) {
-            $query->where('created_at', '<=', $request->date('to'));
-        }
-
-        $paginated = $query->paginate($request->integer('per_page', 25));
+        $rows = array_map(function (array $row) use ($node) {
+            return [
+                'id' => $row['id'] ?? null,
+                'node' => $node['kode_node'] ?? '',
+                'ph' => $row['ph'] ?? null,
+                'temp' => $row['temp'] ?? null,
+                'humidity' => $row['humidity'] ?? null,
+                'turbidity' => $row['turbidity'] ?? null,
+                'water_level' => $row['water_level'] ?? null,
+                'vibration' => $row['vibration'] ?? false,
+                'ai_status' => $row['ai_status'] ?? 'Normal',
+                'created_at' => $this->formatTimestamp($row['created_at'] ?? $row['received_at'] ?? null),
+            ];
+        }, $paginated['data']);
 
         return response()->json([
-            'data' => $paginated->getCollection()->map(fn ($row) => [
-                'id' => $row->id,
-                'node' => $node->kode_node,
-                'ph' => $row->ph,
-                'temp' => $row->temp,
-                'humidity' => $row->humidity,
-                'turbidity' => $row->turbidity,
-                'water_level' => $row->water_level,
-                'vibration' => $row->vibration,
-                'ai_status' => $row->ai_status,
-                'created_at' => $row->created_at?->toIso8601String(),
-            ]),
+            'data' => $rows,
             'meta' => [
-                'current_page' => $paginated->currentPage(),
-                'last_page' => $paginated->lastPage(),
+                'per_page' => $perPage,
+                'has_more' => $paginated['has_more'],
+                'next_cursor' => $paginated['next_cursor'],
             ],
         ]);
+    }
+
+    private function formatTimestamp($timestamp): ?string
+    {
+        if (! $timestamp) {
+            return null;
+        }
+
+        if ($timestamp instanceof Timestamp) {
+            return $timestamp->toDateTime()->format(\DateTime::ATOM);
+        }
+
+        if ($timestamp instanceof \DateTimeInterface) {
+            return $timestamp->format(\DateTime::ATOM);
+        }
+
+        if (is_string($timestamp)) {
+            return (new \DateTime($timestamp))->format(\DateTime::ATOM);
+        }
+
+        return null;
     }
 }

@@ -2,37 +2,44 @@
 
 namespace App\Console\Commands;
 
-use App\Models\SensorData;
+use App\Repositories\SensorDataRepository;
 use Illuminate\Console\Command;
 
 class PruneOldSensorData extends Command
 {
     protected $signature = 'sensor-data:prune {--force : lewati konfirmasi dan jalankan non-interaktif}';
 
-    protected $description = 'Hapus data mentah sensor_data yang lebih tua dari periode retensi (data sudah diagregasi ke sensor_data_hourly).';
+    protected $description = 'Hapus pembacaan sensor lama dari Firestore (disarankan pakai native Firestore TTL policy).';
 
-    public function handle(): int
+    public function handle(SensorDataRepository $sensorRepo): int
     {
         $bulanRetensi = (int) config('watermonitoring.raw_retention_months', 3);
         $batasWaktu = now()->subMonths($bulanRetensi);
 
-        $jumlah = SensorData::where('created_at', '<', $batasWaktu)->count();
+        $this->info("Menyiapkan pembersihan data sebelum {$batasWaktu->toDateString()}...");
 
-        if ($jumlah === 0) {
-            $this->info('Tidak ada data mentah yang perlu dihapus.');
+        // Query data lama
+        $oldDocs = $sensorRepo->where('received_at', '<', $batasWaktu->toIso8601String())->limit(500)->documents();
+        $count = 0;
+        $batch = $sensorRepo->batch();
 
+        foreach ($oldDocs as $doc) {
+            $batch->delete($doc->reference());
+            $count++;
+        }
+
+        if ($count === 0) {
+            $this->info('Tidak ada data mentah lama yang perlu dihapus.');
             return self::SUCCESS;
         }
 
-        if (! $this->option('force') && ! $this->confirm("Akan menghapus {$jumlah} baris data mentah sebelum {$batasWaktu->toDateString()}. Lanjutkan?", true)) {
+        if (! $this->option('force') && ! $this->confirm("Akan menghapus {$count} dokumen sensor lama. Lanjutkan?", true)) {
             $this->warn('Dibatalkan.');
-
             return self::SUCCESS;
         }
 
-        $deleted = SensorData::where('created_at', '<', $batasWaktu)->delete();
-
-        $this->info("Berhasil menghapus {$deleted} baris data mentah lama.");
+        $sensorRepo->commit($batch);
+        $this->info("Berhasil membersihkan {$count} data sensor lama.");
 
         return self::SUCCESS;
     }

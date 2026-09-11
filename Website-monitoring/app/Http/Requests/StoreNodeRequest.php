@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreNodeRequest extends FormRequest
 {
@@ -15,7 +14,7 @@ class StoreNodeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'kode_node' => ['required', 'string', 'max:100', Rule::unique('nodes', 'kode_node')],
+            'kode_node' => ['required', 'string', 'max:100'],
             'nama_lokasi' => ['required', 'string', 'max:255'],
         ];
     }

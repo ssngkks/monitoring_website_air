@@ -15,7 +15,7 @@ class StoreSensorDataRequest extends FormRequest
     {
         return [
             'api_token' => ['required', 'string'],
-            'kode_node' => ['required', 'string', 'exists:nodes,kode_node'],
+            'kode_node' => ['required', 'string'],
 
             'ph' => ['nullable', 'numeric', 'between:0,14'],
             'temp' => ['nullable', 'numeric', 'between:-10,100'],
@@ -31,7 +31,6 @@ class StoreSensorDataRequest extends FormRequest
     {
         return [
             'ph.between' => 'Nilai pH harus di antara 0 dan 14.',
-            'kode_node.exists' => 'kode_node tidak dikenal.',
         ];
     }
 }

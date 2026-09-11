@@ -10,31 +10,28 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class KirimNotifikasiAlert implements ShouldQueue
+class KirimNotifikasiRecovery implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
     public int $backoff = 10;
 
-    public function __construct(public array $alert, public ?array $node = null)
+    public function __construct(public array $node, public string $previousStatus)
     {
     }
 
     public function handle(): void
     {
-        $severity = strtoupper($this->alert['severity'] ?? 'ALERT');
-        $namaLokasi = $this->node['nama_lokasi'] ?? ($this->alert['nama_lokasi'] ?? '-');
-        $kodeNode = $this->node['kode_node'] ?? ($this->alert['kode_node'] ?? '-');
-        $pesan = $this->alert['pesan'] ?? '';
+        $namaLokasi = $this->node['nama_lokasi'] ?? '-';
+        $kodeNode = $this->node['kode_node'] ?? '-';
 
         $teks = sprintf(
-            "\xE2\x9A\xA0\xEF\xB8\x8F *%s* - %s\nLokasi: %s (%s)\nPesan: %s",
-            $severity,
+            "✅ *RECOVERY* - %s\nLokasi: %s (%s)\nStatus kembali Normal setelah sebelumnya %s.",
             now()->format('d M Y H:i'),
             $namaLokasi,
             $kodeNode,
-            $pesan,
+            $this->previousStatus,
         );
 
         $this->kirimTelegram($teks);
@@ -46,8 +43,8 @@ class KirimNotifikasiAlert implements ShouldQueue
         $chatId = config('services.telegram.chat_id');
 
         if (! $botToken || ! $chatId) {
-            Log::info('Telegram belum dikonfigurasi, notifikasi dilewati.', [
-                'alert_id' => $this->alert['id'] ?? null,
+            Log::info('Telegram belum dikonfigurasi, notifikasi recovery dilewati.', [
+                'node_id' => $this->node['id'] ?? null,
             ]);
 
             return;
@@ -60,8 +57,8 @@ class KirimNotifikasiAlert implements ShouldQueue
         ]);
 
         if ($response->failed()) {
-            Log::error('Telegram notification gagal', [
-                'alert_id' => $this->alert['id'] ?? null,
+            Log::error('Telegram recovery notification gagal', [
+                'node_id' => $this->node['id'] ?? null,
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -72,10 +69,9 @@ class KirimNotifikasiAlert implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::critical('KirimNotifikasiAlert gagal setelah semua retry', [
-            'alert_id' => $this->alert['id'] ?? null,
-            'node_id' => $this->alert['node_id'] ?? null,
-            'severity' => $this->alert['severity'] ?? null,
+        Log::critical('KirimNotifikasiRecovery gagal setelah semua retry', [
+            'node_id' => $this->node['id'] ?? null,
+            'previous_status' => $this->previousStatus,
             'error' => $exception->getMessage(),
         ]);
     }

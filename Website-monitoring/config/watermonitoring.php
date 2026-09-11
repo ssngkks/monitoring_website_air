@@ -11,4 +11,7 @@ return [
     // Node dianggap "online" jika last_seen_at dalam N menit terakhir.
     'online_threshold_minutes' => env('NODE_ONLINE_THRESHOLD_MINUTES', 10),
 
+    // Cooldown menit untuk notifikasi Telegram per node_id + severity (anti-spam).
+    'alert_cooldown_minutes' => env('ALERT_COOLDOWN_MINUTES', 10),
+
 ];

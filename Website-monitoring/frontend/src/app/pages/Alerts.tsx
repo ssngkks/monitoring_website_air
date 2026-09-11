@@ -1,203 +1,121 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, Info, XCircle, X, Filter, Search, Download } from 'lucide-react';
-import { Alert } from '../components/AlertPanel';
+import { AlertTriangle, CheckCircle, Info, XCircle, X, Filter, Search, Download, Check, Bell } from 'lucide-react';
 import { api, AlertData } from '../lib/api';
 
-const mockAlerts: (Alert & { description: string; severity: string })[] = [
-  {
-    id: '1',
-    type: 'critical',
-    message: 'Getaran terdeteksi di Titik Pantau C',
-    location: 'Sensor Getar – Titik Pantau C',
-    timestamp: '2 menit lalu',
-    description: 'Sensor getar mendeteksi aktivitas getaran yang tidak normal. Nilai melebihi ambang batas aman. Periksa kondisi fisik pipa dan struktur sekitar lokasi segera.',
-    severity: 'High',
-  },
-  {
-    id: '2',
-    type: 'warning',
-    message: 'Kekeruhan air melebihi batas normal',
-    location: 'Sensor Turbidity – Titik Pantau C',
-    timestamp: '5 menit lalu',
-    description: 'Nilai turbidity terbaca 1.85 NTU, melebihi batas normal 1.5 NTU. Kemungkinan terjadi sedimentasi atau kontaminasi. Lakukan pemeriksaan sumber air.',
-    severity: 'Medium',
-  },
-  {
-    id: '3',
-    type: 'warning',
-    message: 'pH air di bawah normal',
-    location: 'Sensor pH – Titik Pantau C',
-    timestamp: '8 menit lalu',
-    description: 'Nilai pH terbaca 6.3, berada di bawah rentang normal (6.5–8.5). Air bersifat terlalu asam. Segera lakukan pengecekan sumber pencemaran.',
-    severity: 'Medium',
-  },
-  {
-    id: '4',
-    type: 'warning',
-    message: 'Level air mendekati batas bawah',
-    location: 'Sensor Ultrasonik – Titik Pantau C',
-    timestamp: '12 menit lalu',
-    description: 'Level air terukur 87.6 cm, mendekati batas minimum 80 cm. Pantau terus penurunan level agar tidak menyebabkan kekeringan pada sistem.',
-    severity: 'Medium',
-  },
-  {
-    id: '5',
-    type: 'warning',
-    message: 'Suhu air meningkat di atas normal',
-    location: 'Sensor DHT – Titik Pantau C',
-    timestamp: '20 menit lalu',
-    description: 'Suhu air terbaca 24.8°C dari sensor DHT, mendekati batas atas 28°C. Pantau tren suhu untuk mencegah pertumbuhan bakteri berbahaya.',
-    severity: 'Medium',
-  },
-  {
-    id: '6',
-    type: 'info',
-    message: 'Kelembapan ambient tinggi',
-    location: 'Sensor DHT – Titik Pantau C',
-    timestamp: '25 menit lalu',
-    description: 'Kelembapan ambient mencapai 70%, lebih tinggi dari biasanya. Kondisi ini dapat mempengaruhi akurasi pembacaan sensor. Pastikan sensor terlindung dari kelembapan berlebih.',
-    severity: 'Low',
-  },
-  {
-    id: '7',
-    type: 'success',
-    message: 'Nilai pH kembali normal di Titik B',
-    location: 'Sensor pH – Titik Pantau B',
-    timestamp: '1 jam lalu',
-    description: 'Nilai pH telah kembali ke rentang normal (7.0) setelah sebelumnya menunjukkan penyimpangan kecil. Sistem berjalan stabil.',
-    severity: 'Low',
-  },
-  {
-    id: '8',
-    type: 'info',
-    message: 'Kalibrasi sensor terjadwal',
-    location: 'Semua Sensor – Titik Pantau A–F',
-    timestamp: '3 jam lalu',
-    description: 'Kalibrasi rutin triwulanan untuk sensor pH, turbidity, DHT, ultrasonik, dan getar dijadwalkan besok pukul 09.00 WIB. Pastikan data dibackup sebelum kalibrasi.',
-    severity: 'Low',
-  },
-];
+interface SystemAlert {
+  id: string;
+  backendId?: string | number;
+  type: 'critical' | 'warning' | 'info';
+  message: string;
+  location: string;
+  timestamp: string;
+  description: string;
+  severity: 'Kritis' | 'Peringatan' | 'Informasi';
+  isRead: boolean;
+}
 
 export function Alerts() {
-  const [alerts, setAlerts] = useState<(Alert & { description: string; severity: string; backendId?: string | number; isRead?: boolean })[]>([]);
-  const [selectedAlert, setSelectedAlert] = useState<(Alert & { description: string; severity: string }) | null>(null);
+  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [selectedAlert, setSelectedAlert] = useState<SystemAlert | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadAlerts = async () => {
+    try {
+      const response = await api.alerts('per_page=200');
+      const mapped: SystemAlert[] = (response.data || []).map((item: AlertData) => {
+        const isCrit = item.severity === 'critical';
+        const createdDate = item.created_at ? new Date(item.created_at) : new Date();
 
-    const loadAlerts = async () => {
-      try {
-        const response = await api.alerts('per_page=200');
-        const mapped = response.data.map((item: AlertData) => ({
+        return {
           id: String(item.id),
           backendId: item.id,
-          type: (item.severity === 'critical' ? 'critical' : 'warning') as Alert['type'],
-          message: item.pesan || item.message || item.title || 'Peringatan sensor',
+          type: isCrit ? 'critical' : 'warning',
+          message: item.pesan || 'Peringatan kondisi sensor terdeteksi',
           location: item.node?.nama_lokasi
-            ? `Node ${item.node.kode_node} – ${item.node.nama_lokasi}`
-            : item.node?.kode_node || 'Node sensor',
-          timestamp: new Date(item.created_at).toLocaleString('id-ID'),
-          description: item.pesan || item.message || 'Peringatan dari sistem monitoring.',
-          severity: item.severity === 'critical' ? 'High' : 'Medium',
-          isRead: item.is_read,
-        }));
+            ? `Unit ${item.node.kode_node} – ${item.node.nama_lokasi}`
+            : 'Unit ESP32 Sensor Utama',
+          timestamp: createdDate.toLocaleString('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }) + ' WIB',
+          description: item.pesan || 'Nilai parameter sensor terdeteksi melampaui batas aman operasional.',
+          severity: isCrit ? 'Kritis' : 'Peringatan',
+          isRead: Boolean(item.is_read),
+        };
+      });
 
-        if (!cancelled) setAlerts(mapped);
-      } catch (error) {
-        console.error('Gagal mengambil alerts:', error);
-        if (!cancelled) setAlerts([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
+      setAlerts(mapped);
+    } catch (error) {
+      console.error('Gagal mengambil daftar peringatan:', error);
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadAlerts();
-    return () => {
-      cancelled = true;
-    };
+    const interval = setInterval(loadAlerts, 15000); // Polling tiap 15 detik
+    return () => clearInterval(interval);
   }, []);
 
-  const getAlertIcon = (type: Alert['type']) => {
-    switch (type) {
-      case 'critical':
-        return XCircle;
-      case 'warning':
-        return AlertTriangle;
-      case 'success':
-        return CheckCircle;
-      default:
-        return Info;
-    }
-  };
-
-  const getAlertStyles = (type: Alert['type']) => {
-    switch (type) {
-      case 'critical':
-        return 'bg-red-50 border-red-200 hover:border-red-300 dark:bg-red-950 dark:border-red-900';
-      case 'warning':
-        return 'bg-yellow-50 border-yellow-200 hover:border-yellow-300 dark:bg-yellow-950 dark:border-yellow-900';
-      case 'success':
-        return 'bg-green-50 border-green-200 hover:border-green-300 dark:bg-green-950 dark:border-green-900';
-      default:
-        return 'bg-blue-50 border-blue-200 hover:border-blue-300 dark:bg-blue-950 dark:border-blue-900';
-    }
-  };
-
-  const getAlertIconColor = (type: Alert['type']) => {
-    switch (type) {
-      case 'critical':
-        return 'text-red-600 dark:text-red-400';
-      case 'warning':
-        return 'text-yellow-600 dark:text-yellow-400';
-      case 'success':
-        return 'text-green-600 dark:text-green-400';
-      default:
-        return 'text-blue-600 dark:text-blue-400';
+  const handleMarkAsRead = async (alertId: string, backendId?: string | number) => {
+    try {
+      if (backendId) {
+        await api.markAlertRead(backendId);
+      }
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, isRead: true } : a))
+      );
+      if (selectedAlert?.id === alertId) {
+        setSelectedAlert((prev) => prev ? { ...prev, isRead: true } : null);
+      }
+    } catch (err) {
+      console.error('Gagal menandai alert sebagai dibaca:', err);
     }
   };
 
   const filteredAlerts = alerts.filter((alert) => {
-    const matchesType = filterType === 'all' || alert.type === filterType;
+    const matchesFilter =
+      filterType === 'all'
+        ? true
+        : filterType === 'unread'
+          ? !alert.isRead
+          : alert.type === filterType;
+
     const matchesSearch =
       alert.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      alert.location.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
-  });
+      alert.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      alert.description.toLowerCase().includes(searchQuery.toLowerCase());
 
-  const handleDismiss = (id: string) => {
-    const alert = alerts.find((item) => item.id === id);
-    if (alert?.backendId) {
-      api.markAlertRead(alert.backendId).catch((error) =>
-        console.error('Gagal menandai alert sebagai dibaca:', error),
-      );
-    }
-    setAlerts((current) => current.filter((item) => item.id !== id));
-    if (selectedAlert?.id === id) setSelectedAlert(null);
-  };
+    return matchesFilter && matchesSearch;
+  });
 
   const exportAlerts = () => {
     const csvContent = [
-      ['Type', 'Message', 'Location', 'Timestamp', 'Severity', 'Description'],
-      ...filteredAlerts.map((alert) => [
-        alert.type,
-        alert.message,
-        alert.location,
-        alert.timestamp,
-        alert.severity,
-        alert.description,
+      ['ID', 'Tingkat', 'Pesan Peringatan', 'Lokasi Perangkat', 'Waktu', 'Status Dibaca'],
+      ...filteredAlerts.map((a) => [
+        a.id,
+        a.severity,
+        `"${a.message.replace(/"/g, '""')}"`,
+        `"${a.location}"`,
+        `"${a.timestamp}"`,
+        a.isRead ? 'Sudah Dibaca' : 'Belum Dibaca',
       ]),
     ]
       .map((row) => row.join(','))
       .join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `alerts-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `laporan-peringatan-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
 
@@ -205,80 +123,84 @@ export function Alerts() {
     total: alerts.length,
     critical: alerts.filter((a) => a.type === 'critical').length,
     warning: alerts.filter((a) => a.type === 'warning').length,
-    info: alerts.filter((a) => a.type === 'info' || a.type === 'success').length,
+    unread: alerts.filter((a) => !a.isRead).length,
   };
 
   return (
     <div className="p-6 lg:p-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Alerts & Notifications</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Monitor and manage system alerts in real-time</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Peringatan & Notifikasi Sistem
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Pantau kondisi anomali sensor air dan kelola notifikasi secara real-time
+        </p>
       </div>
 
-      {/* Stats */}
+      {/* Kartu Ringkasan */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-sm text-gray-500">Total Alerts</p>
-          <p className="mt-1 text-2xl font-bold">{stats.total}</p>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Peringatan</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
         </div>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-400">Critical</p>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/50 dark:bg-red-950/40">
+          <p className="text-xs font-medium text-red-700 dark:text-red-400">Kondisi Kritis</p>
           <p className="mt-1 text-2xl font-bold text-red-600 dark:text-red-400">{stats.critical}</p>
         </div>
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900 dark:bg-yellow-950">
-          <p className="text-sm text-yellow-700 dark:text-yellow-400">Warnings</p>
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 shadow-sm dark:border-yellow-900/50 dark:bg-yellow-950/40">
+          <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400">Peringatan / Warning</p>
           <p className="mt-1 text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.warning}</p>
         </div>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
-          <p className="text-sm text-blue-700 dark:text-blue-400">Info</p>
-          <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.info}</p>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/40">
+          <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Belum Dibaca</p>
+          <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.unread}</p>
         </div>
       </div>
 
-      {/* Filters and Search */}
+      {/* Kontrol Filter & Pencarian */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setFilterType('all')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
               filterType === 'all'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
             }`}
           >
-            <Filter className="mr-2 inline-block h-4 w-4" />
-            All
+            <Filter className="mr-1.5 inline-block h-3.5 w-3.5" />
+            Semua ({stats.total})
           </button>
           <button
             onClick={() => setFilterType('critical')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
               filterType === 'critical'
                 ? 'bg-red-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
             }`}
           >
-            Critical
+            Kritis ({stats.critical})
           </button>
           <button
             onClick={() => setFilterType('warning')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
               filterType === 'warning'
                 ? 'bg-yellow-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
             }`}
           >
-            Warning
+            Peringatan ({stats.warning})
           </button>
           <button
-            onClick={() => setFilterType('info')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              filterType === 'info'
+            onClick={() => setFilterType('unread')}
+            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
+              filterType === 'unread'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
             }`}
           >
-            Info
+            Belum Dibaca ({stats.unread})
           </button>
         </div>
 
@@ -287,68 +209,100 @@ export function Alerts() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search alerts..."
+              placeholder="Cari peringatan..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-4 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
           </div>
           <button
             onClick={exportAlerts}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
           >
-            <Download className="h-4 w-4" />
-            Export
+            <Download className="h-3.5 w-3.5" />
+            Ekspor CSV
           </button>
         </div>
       </div>
 
-      {/* Alerts List */}
+      {/* Daftar Peringatan */}
       <div className="space-y-3">
         {loading ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
-            <p className="font-medium text-gray-600 dark:text-gray-400">Memuat alerts...</p>
+          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-sm font-medium text-gray-500 animate-pulse">Memuat daftar peringatan...</p>
           </div>
         ) : filteredAlerts.length === 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
-            <CheckCircle className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-4 font-medium text-gray-600 dark:text-gray-400">No alerts found</p>
-            <p className="text-sm text-gray-500">Try adjusting your filters</p>
+          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
+            <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
+            <p className="mt-4 text-base font-bold text-gray-800 dark:text-gray-200">
+              Tidak Ada Peringatan
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Seluruh parameter sensor air berada dalam rentang ambang batas aman.
+            </p>
           </div>
         ) : (
           filteredAlerts.map((alert) => {
-            const Icon = getAlertIcon(alert.type);
+            const isCrit = alert.type === 'critical';
             return (
               <div
                 key={alert.id}
                 onClick={() => setSelectedAlert(alert)}
-                className={`cursor-pointer rounded-lg border p-4 transition-all ${getAlertStyles(alert.type)}`}
+                className={`cursor-pointer rounded-xl border p-4 transition-all shadow-sm ${
+                  isCrit
+                    ? 'border-red-200 bg-red-50/70 hover:border-red-300 dark:border-red-900/60 dark:bg-red-950/30'
+                    : 'border-yellow-200 bg-yellow-50/70 hover:border-yellow-300 dark:border-yellow-900/60 dark:bg-yellow-950/30'
+                } ${alert.isRead ? 'opacity-70' : ''}`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <Icon className={`mt-0.5 h-5 w-5 flex-shrink-0 ${getAlertIconColor(alert.type)}`} />
+                    {isCrit ? (
+                      <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-600 dark:text-yellow-400" />
+                    )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{alert.message}</h3>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                          {alert.message}
+                        </h3>
+                        {!alert.isRead && (
+                          <span className="rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                            Baru
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                         <span className="font-medium">{alert.location}</span>
                         <span>•</span>
                         <span>{alert.timestamp}</span>
                         <span>•</span>
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium dark:bg-gray-700">
-                          {alert.severity} Priority
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            isCrit
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+                          }`}
+                        >
+                          Tingkat: {alert.severity}
                         </span>
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDismiss(alert.id);
-                    }}
-                    className="rounded-lg p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+
+                  {!alert.isRead && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMarkAsRead(alert.id, alert.backendId);
+                      }}
+                      className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      title="Tandai Sudah Dibaca"
+                    >
+                      <Check className="h-3.5 w-3.5 text-green-600" />
+                      <span>Tandai Dibaca</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -356,64 +310,75 @@ export function Alerts() {
         )}
       </div>
 
-      {/* Alert Detail Modal */}
+      {/* Modal Detail Peringatan */}
       {selectedAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedAlert(null)}>
-          <div className="fixed inset-0 bg-black/50" />
-          <div
-            className="relative z-10 w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-900"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                {(() => {
-                  const Icon = getAlertIcon(selectedAlert.type);
-                  return <Icon className={`mt-1 h-6 w-6 ${getAlertIconColor(selectedAlert.type)}`} />;
-                })()}
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{selectedAlert.message}</h2>
-                  <p className="mt-1 text-sm text-gray-500">{selectedAlert.timestamp}</p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900">
+            <div className="flex items-start justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-blue-600" />
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Rincian Peringatan Sensor
+                </h3>
               </div>
               <button
                 onClick={() => setSelectedAlert(null)}
-                className="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="mt-4 space-y-3 text-sm">
               <div>
-                <p className="text-sm font-medium text-gray-500">Location</p>
-                <p className="mt-1 text-gray-900 dark:text-white">{selectedAlert.location}</p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-gray-500">Severity</p>
-                <p className="mt-1">
-                  <span className="rounded-full bg-gray-200 px-3 py-1 text-sm font-medium dark:bg-gray-700">
-                    {selectedAlert.severity} Priority
-                  </span>
+                <p className="text-xs text-gray-500">Pesan Anomali</p>
+                <p className="font-semibold text-gray-900 dark:text-white mt-0.5">
+                  {selectedAlert.message}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm font-medium text-gray-500">Description</p>
-                <p className="mt-1 text-gray-900 dark:text-white">{selectedAlert.description}</p>
+                <p className="text-xs text-gray-500">Perangkat Sumber</p>
+                <p className="text-gray-700 dark:text-gray-300">{selectedAlert.location}</p>
               </div>
 
-              <div className="flex gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
-                <button
-                  onClick={() => handleDismiss(selectedAlert.id)}
-                  className="flex-1 rounded-lg bg-gray-100 px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                >
-                  Dismiss
-                </button>
-                <button className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700">
-                  Take Action
-                </button>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-gray-500">Waktu Kejadian</p>
+                  <p className="font-medium text-gray-800 dark:text-gray-200">{selectedAlert.timestamp}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Tingkat Keparahan</p>
+                  <p className="font-semibold text-red-600 dark:text-red-400">{selectedAlert.severity}</p>
+                </div>
               </div>
+
+              <div>
+                <p className="text-xs text-gray-500">Keterangan Teknis</p>
+                <p className="mt-1 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  {selectedAlert.description}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              {!selectedAlert.isRead && (
+                <button
+                  onClick={() => {
+                    handleMarkAsRead(selectedAlert.id, selectedAlert.backendId);
+                    setSelectedAlert(null);
+                  }}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                >
+                  Tandai Sudah Dibaca
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedAlert(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

@@ -18,6 +18,7 @@ class NodeController extends Controller
         protected NodeRepository $nodeRepo,
         protected NodeLiveRepository $nodeLiveRepo,
         protected SensorDataRepository $sensorRepo,
+        protected \App\Services\FirebaseSyncService $syncService,
     ) {
     }
 
@@ -42,59 +43,8 @@ class NodeController extends Controller
 
         // Sinkronisasi data terkini dari Firebase Realtime Database jika ada
         if (! empty($nodes) && config('firebase.database_url')) {
-            try {
-                $factory = (new \Kreait\Firebase\Factory())
-                    ->withServiceAccount(config('firebase.credentials'))
-                    ->withDatabaseUri(config('firebase.database_url'));
-                $rtdb = $factory->createDatabase();
-                $latest = $rtdb->getReference('/sensor/latest')->getValue();
-                if (is_array($latest)) {
-                    $primaryId = $nodes[0]['id'];
-                    $payload = [
-                        'ph' => (float) ($latest['ph'] ?? 0),
-                        'temp' => (float) ($latest['suhu'] ?? 0),
-                        'humidity' => (float) ($latest['kelembapan'] ?? 0),
-                        'turbidity' => (float) ($latest['turbidity'] ?? 0),
-                        'water_level' => (float) ($latest['ketinggian_air'] ?? 0),
-                        'vibration' => ((int) ($latest['getaran'] ?? 0)) > 0,
-                        'vibration_rms' => (float) ($latest['getaran'] ?? 0),
-                        'ai_status' => 'Normal',
-                        'rssi' => $latest['rssi'] ?? -43,
-                        'snr' => $latest['snr'] ?? 10.0,
-                    ];
-                    $this->nodeLiveRepo->updateLiveData($primaryId, $payload, $userId);
-                    $this->nodeRepo->updateLastSeen($primaryId);
-
-                    // Evaluasi ambang batas untuk alert jika ada kondisi kritis
-                    $ph = $payload['ph'];
-                    $temp = $payload['temp'];
-                    $turb = $payload['turbidity'];
-                    $anomalies = [];
-                    if ($ph < 6.5 || $ph > 8.5) {
-                        $anomalies[] = "Nilai pH air abnormal ({$ph})";
-                    }
-                    if ($temp > 28.0) {
-                        $anomalies[] = "Suhu sensor tinggi ({$temp}°C)";
-                    }
-                    if ($turb > 1.5) {
-                        $anomalies[] = "Kekeruhan air tinggi ({$turb} NTU)";
-                    }
-                    if (! empty($anomalies)) {
-                        $alertRepo = app(\App\Repositories\AlertRepository::class);
-                        $activeAlerts = $alertRepo->getByNodeId($primaryId, false, 1);
-                        if (empty($activeAlerts)) {
-                            $alertRepo->createAlert([
-                                'node_id' => $primaryId,
-                                'user_id' => $userId,
-                                'pesan' => implode(' | ', $anomalies),
-                                'severity' => ($ph < 5.0 || $temp > 40.0 || $turb > 5.0) ? 'critical' : 'warning',
-                                'status' => 'active',
-                                'is_read' => false,
-                            ]);
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {}
+            $this->syncService->syncFromRealtimeDatabase($nodes[0]['id'], $userId, false);
+            $nodes = $this->nodeRepo->getByUserId($userId);
         }
 
         $data = array_map(function (array $node) use ($thresholdMinutes) {
@@ -210,11 +160,16 @@ class NodeController extends Controller
         }
 
         if ($timestamp instanceof Timestamp) {
-            return $timestamp->toDateTime()->format(\DateTime::ATOM);
+            return $timestamp->get()->format(\DateTime::ATOM);
         }
 
         if ($timestamp instanceof \DateTimeInterface) {
             return $timestamp->format(\DateTime::ATOM);
+        }
+
+        if (is_numeric($timestamp)) {
+            $sec = strlen((string) (int) $timestamp) > 10 ? (int) ($timestamp / 1000) : (int) $timestamp;
+            return (new \DateTime("@$sec"))->format(\DateTime::ATOM);
         }
 
         if (is_string($timestamp)) {

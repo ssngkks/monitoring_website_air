@@ -1,5 +1,6 @@
 import { Cpu, Wifi, Activity, CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useLanguage } from '../context/LanguageContext';
 
 export interface DeviceData {
   id: string;
@@ -8,31 +9,33 @@ export interface DeviceData {
   location: string;
   status: 'online' | 'offline' | 'warning';
   lastUpdate: string;
-  rssi?: number;
-  snr?: number;
+  rssi?: number | null;
+  snr?: number | null;
   metrics: {
-    ph: number;
-    temperature: number;
-    humidity: number;
-    turbidity: number;
-    waterLevel: number;
-    vibration: boolean;
+    ph: number | null;
+    temperature: number | null;
+    humidity: number | null;
+    turbidity: number | null;
+    waterLevel: number | null;
+    vibration: boolean | null;
   };
 }
 
 interface SensorStatusProps {
   device?: DeviceData | null;
+  hasLoaded?: boolean;
 }
 
-export function SensorStatus({ device }: SensorStatusProps) {
+export function SensorStatus({ device, hasLoaded = false }: SensorStatusProps) {
+  const { t } = useLanguage();
   const isOnline = device?.status === 'online';
 
-  const getRssiQuality = (rssi?: number) => {
-    if (rssi === undefined || rssi === null) return 'Tidak Diketahui';
-    if (rssi >= -50) return 'Sangat Bagus';
-    if (rssi >= -70) return 'Bagus';
-    if (rssi >= -85) return 'Cukup';
-    return 'Lemah';
+  const getRssiQuality = (rssi?: number | null) => {
+    if (rssi === undefined || rssi === null) return t.common.unknown;
+    if (rssi >= -50) return t.dashboard.signalVeryGood;
+    if (rssi >= -70) return t.dashboard.signalGood;
+    if (rssi >= -85) return t.dashboard.signalFair;
+    return t.dashboard.signalWeak;
   };
 
   return (
@@ -63,18 +66,30 @@ export function SensorStatus({ device }: SensorStatusProps) {
           <div
             className={cn(
               'flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold',
-              isOnline
-                ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400'
-                : 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400'
+              !hasLoaded
+                ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                : isOnline
+                  ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400'
+                  : 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400'
             )}
           >
             <span
               className={cn(
                 'h-2 w-2 rounded-full',
-                isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                !hasLoaded
+                  ? 'bg-gray-400'
+                  : isOnline
+                    ? 'bg-green-500 animate-pulse'
+                    : 'bg-red-500'
               )}
             />
-            <span>{isOnline ? 'Terhubung (Online)' : 'Terputus (Offline)'}</span>
+            <span>
+              {!hasLoaded
+                ? t.common.waitingData
+                : isOnline
+                  ? 'Terhubung (Online)'
+                  : 'Terputus (Offline)'}
+            </span>
           </div>
         </div>
       </div>
@@ -87,7 +102,7 @@ export function SensorStatus({ device }: SensorStatusProps) {
             Terakhir Terlihat
           </span>
           <p className="font-semibold text-gray-800 dark:text-gray-200">
-            {device?.lastUpdate || 'Belum ada data'}
+            {hasLoaded && device?.lastUpdate ? device.lastUpdate : t.common.noData}
           </p>
         </div>
 
@@ -97,7 +112,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
             Kekuatan Sinyal (RSSI)
           </span>
           <p className="font-semibold text-gray-800 dark:text-gray-200">
-            {device?.rssi !== undefined ? `${device.rssi} dBm (${getRssiQuality(device.rssi)})` : '-43 dBm (Sangat Bagus)'}
+            {hasLoaded && device?.rssi !== undefined && device?.rssi !== null
+              ? `${device.rssi} dBm (${getRssiQuality(device.rssi)})`
+              : t.common.noData}
           </p>
         </div>
 
@@ -107,7 +124,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
             Rasio Sinyal/Noise (SNR)
           </span>
           <p className="font-semibold text-gray-800 dark:text-gray-200">
-            {device?.snr !== undefined ? `${device.snr} dB` : '10 dB (Stabil)'}
+            {hasLoaded && device?.snr !== undefined && device?.snr !== null
+              ? `${device.snr} dB`
+              : t.common.noData}
           </p>
         </div>
 
@@ -117,7 +136,11 @@ export function SensorStatus({ device }: SensorStatusProps) {
             Kesehatan Perangkat
           </span>
           <p className="font-semibold text-green-700 dark:text-green-400">
-            {isOnline ? 'Normal & Siap Operasi' : 'Periksa Daya / Koneksi'}
+            {!hasLoaded
+              ? t.common.waitingData
+              : isOnline
+                ? t.dashboard.deviceReady
+                : t.dashboard.deviceCheck}
           </p>
         </div>
       </div>
@@ -132,7 +155,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
           <div className="rounded-lg border border-gray-200/80 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
             <p className="text-xs text-gray-500">Sensor pH Air</p>
             <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
-              {device?.metrics.ph !== undefined ? device.metrics.ph.toFixed(2) : '-'}
+              {hasLoaded && device?.metrics.ph !== undefined && device?.metrics.ph !== null
+                ? device.metrics.ph.toFixed(2)
+                : t.common.noData}
             </p>
             <span className="text-[10px] text-gray-400">Rentang 0 - 14</span>
           </div>
@@ -141,7 +166,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
           <div className="rounded-lg border border-gray-200/80 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
             <p className="text-xs text-gray-500">Sensor Suhu (DHT)</p>
             <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
-              {device?.metrics.temperature !== undefined ? `${device.metrics.temperature.toFixed(1)}°C` : '-'}
+              {hasLoaded && device?.metrics.temperature !== undefined && device?.metrics.temperature !== null
+                ? `${device.metrics.temperature.toFixed(1)}°C`
+                : t.common.noData}
             </p>
             <span className="text-[10px] text-gray-400">Suhu Lingkungan</span>
           </div>
@@ -150,7 +177,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
           <div className="rounded-lg border border-gray-200/80 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
             <p className="text-xs text-gray-500">Kelembapan (DHT)</p>
             <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
-              {device?.metrics.humidity !== undefined ? `${device.metrics.humidity.toFixed(1)}%` : '-'}
+              {hasLoaded && device?.metrics.humidity !== undefined && device?.metrics.humidity !== null
+                ? `${device.metrics.humidity.toFixed(1)}%`
+                : t.common.noData}
             </p>
             <span className="text-[10px] text-gray-400">Udara Sekitar</span>
           </div>
@@ -159,7 +188,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
           <div className="rounded-lg border border-gray-200/80 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
             <p className="text-xs text-gray-500">Sensor Kekeruhan</p>
             <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
-              {device?.metrics.turbidity !== undefined ? `${device.metrics.turbidity.toFixed(1)} NTU` : '-'}
+              {hasLoaded && device?.metrics.turbidity !== undefined && device?.metrics.turbidity !== null
+                ? `${device.metrics.turbidity.toFixed(1)} NTU`
+                : t.common.noData}
             </p>
             <span className="text-[10px] text-gray-400">Kekeruhan Air</span>
           </div>
@@ -168,7 +199,9 @@ export function SensorStatus({ device }: SensorStatusProps) {
           <div className="rounded-lg border border-gray-200/80 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
             <p className="text-xs text-gray-500">Ketinggian Air</p>
             <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
-              {device?.metrics.waterLevel !== undefined ? `${device.metrics.waterLevel} cm` : '-'}
+              {hasLoaded && device?.metrics.waterLevel !== undefined && device?.metrics.waterLevel !== null
+                ? `${device.metrics.waterLevel} cm`
+                : t.common.noData}
             </p>
             <span className="text-[10px] text-gray-400">Sensor Ultrasonik</span>
           </div>
@@ -176,14 +209,20 @@ export function SensorStatus({ device }: SensorStatusProps) {
           {/* Getaran */}
           <div className="rounded-lg border border-gray-200/80 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
             <p className="text-xs text-gray-500">Sensor Getaran</p>
-            <p
-              className={cn(
-                'mt-1 text-base font-bold',
-                device?.metrics.vibration ? 'text-red-600' : 'text-green-600'
-              )}
-            >
-              {device?.metrics.vibration ? 'Terdeteksi' : 'Normal'}
-            </p>
+            {!hasLoaded || device?.metrics.vibration === undefined || device?.metrics.vibration === null ? (
+              <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">
+                {t.common.noData}
+              </p>
+            ) : (
+              <p
+                className={cn(
+                  'mt-1 text-base font-bold',
+                  device.metrics.vibration ? 'text-red-600' : 'text-green-600'
+                )}
+              >
+                {device.metrics.vibration ? t.dashboard.vibrationActive : t.dashboard.vibrationNormal}
+              </p>
+            )}
             <span className="text-[10px] text-gray-400">Sensor MPU6050</span>
           </div>
         </div>

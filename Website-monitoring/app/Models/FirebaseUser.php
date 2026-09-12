@@ -21,6 +21,11 @@ class FirebaseUser implements Authenticatable
         return $this->data['id'] ?? null;
     }
 
+    public function getAuthPasswordName(): string
+    {
+        return 'password';
+    }
+
     public function getAuthPassword()
     {
         return $this->data['password'] ?? null;

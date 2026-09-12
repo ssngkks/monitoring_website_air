@@ -53,6 +53,11 @@ class NodeRepository extends FirestoreRepository
         $this->update((string) $nodeId, ['status' => $status]);
     }
 
+    public function getAll(): array
+    {
+        return $this->get();
+    }
+
     public function getActiveNodes(): array
     {
         $query = $this->where('status', '=', 'active');
@@ -87,7 +92,7 @@ class NodeRepository extends FirestoreRepository
 
         $lastSeen = $node['last_seen_at'];
         if ($lastSeen instanceof \Google\Cloud\Core\Timestamp) {
-            $lastSeen = $lastSeen->toDateTime();
+            $lastSeen = $lastSeen->get();
         } elseif (is_string($lastSeen)) {
             $lastSeen = new \DateTime($lastSeen);
         }

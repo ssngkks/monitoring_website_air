@@ -54,7 +54,7 @@ class NodeAlertStateRepository extends FirestoreRepository
         }
         $lastNotified = $state['last_notified_at'];
         if ($lastNotified instanceof \Google\Cloud\Core\Timestamp) {
-            $lastNotified = $lastNotified->toDateTime();
+            $lastNotified = $lastNotified->get();
         } elseif (is_string($lastNotified)) {
             $lastNotified = new \DateTime($lastNotified);
         }

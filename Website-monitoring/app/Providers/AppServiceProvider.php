@@ -31,5 +31,15 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('register', function (Request $request) {
             return Limit::perMinute(5)->by($request->ip());
         });
+
+        \Illuminate\Support\Facades\Auth::provider('custom', function ($app, array $config) {
+            return new \App\Auth\FirestoreUserProvider($app->make(\App\Repositories\UserRepository::class));
+        });
+
+        \Illuminate\Support\Facades\Auth::extend('custom', function ($app, $name, array $config) {
+            return new \Illuminate\Auth\RequestGuard(function ($request) {
+                return $request->attributes->get('user');
+            }, $app['request'], $app['auth']->createUserProvider($config['provider'] ?? null));
+        });
     }
 }

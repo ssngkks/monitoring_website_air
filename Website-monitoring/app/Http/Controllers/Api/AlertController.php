@@ -29,10 +29,16 @@ class AlertController extends Controller
         $isRead = $request->has('is_read') ? $request->boolean('is_read') : null;
         $perPage = $request->integer('per_page', 25);
 
-        $alerts = $this->alertRepo->getByUserId($userId, $isRead, $perPage);
+        // Cache daftar alert user selama 3 detik untuk respons instan
+        $cacheKey = "alerts_{$userId}_" . ($isRead === null ? 'all' : ($isRead ? 'read' : 'unread')) . "_{$perPage}";
+        $alerts = \Illuminate\Support\Facades\Cache::remember($cacheKey, 3, function () use ($userId, $isRead, $perPage) {
+            return $this->alertRepo->getByUserId($userId, $isRead, $perPage);
+        });
 
-        // Preload nodes milik user untuk menyematkan data node pada alert
-        $userNodes = $this->nodeRepo->getByUserId($userId);
+        // Preload nodes milik user dengan cache 30 detik untuk menghindari query berulang
+        $userNodes = \Illuminate\Support\Facades\Cache::remember("user_nodes_{$userId}", 30, function () use ($userId) {
+            return $this->nodeRepo->getByUserId($userId);
+        });
         $nodeMap = [];
         foreach ($userNodes as $n) {
             $nodeMap[$n['id']] = $n;
@@ -82,6 +88,11 @@ class AlertController extends Controller
         $this->alertRepo->markAsRead($alertId);
         $alert['is_read'] = true;
 
+        \Illuminate\Support\Facades\Cache::forget("alerts_{$userId}_all_25");
+        \Illuminate\Support\Facades\Cache::forget("alerts_{$userId}_all_200");
+        \Illuminate\Support\Facades\Cache::forget("alerts_{$userId}_unread_200");
+        \Illuminate\Support\Facades\Cache::forget("alerts_{$userId}_unread_25");
+
         return response()->json(['data' => $alert]);
     }
 
@@ -92,11 +103,16 @@ class AlertController extends Controller
         }
 
         if ($timestamp instanceof Timestamp) {
-            return $timestamp->toDateTime()->format(\DateTime::ATOM);
+            return $timestamp->get()->format(\DateTime::ATOM);
         }
 
         if ($timestamp instanceof \DateTimeInterface) {
             return $timestamp->format(\DateTime::ATOM);
+        }
+
+        if (is_numeric($timestamp)) {
+            $sec = strlen((string) (int) $timestamp) > 10 ? (int) ($timestamp / 1000) : (int) $timestamp;
+            return (new \DateTime("@$sec"))->format(\DateTime::ATOM);
         }
 
         if (is_string($timestamp)) {

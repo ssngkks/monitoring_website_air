@@ -11,3 +11,5 @@ Artisan::command('inspire', function () {
 Schedule::command('sensor-data:aggregate-hourly')->hourly();
 
 Schedule::command('sensor-data:prune --force')->dailyAt('02:00');
+
+Schedule::command('firebase:sync-rtdb')->everyMinute();

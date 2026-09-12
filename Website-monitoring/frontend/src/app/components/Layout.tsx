@@ -32,7 +32,7 @@ interface ProfileData {
 }
 
 export function Layout() {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, isLoading } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
@@ -56,13 +56,13 @@ export function Layout() {
   const [editAvatar, setEditAvatar] = useState(user?.avatar || '');
 
   /* =========================
-     AUTH CHECK (UNCHANGED)
+     AUTH CHECK
   ========================= */
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       navigate('/login');
     }
-  }, [isAuthenticated, navigate]);
+  }, [isLoading, isAuthenticated, navigate]);
 
   /* =========================
      LOAD PROFILE (UNCHANGED)
@@ -82,6 +82,17 @@ export function Layout() {
       }
     }
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <span className="text-xs font-medium text-gray-500">{t.common.loading}</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return null;

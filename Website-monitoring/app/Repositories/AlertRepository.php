@@ -24,40 +24,24 @@ class AlertRepository extends FirestoreRepository
 
     public function getByNodeId(string $nodeId, ?bool $isRead = null, int $limit = 50): array
     {
-        try {
-            $query = $this->where('node_id', '=', (string) $nodeId)->orderBy('created_at', 'DESC')->limit($limit);
-            if ($isRead !== null) {
-                $query = $query->where('is_read', '=', $isRead);
-            }
-            return $this->get($query);
-        } catch (\Throwable $e) {
-            $query = $this->where('node_id', '=', (string) $nodeId)->limit($limit);
-            if ($isRead !== null) {
-                $query = $query->where('is_read', '=', $isRead);
-            }
-            $results = $this->get($query);
-            usort($results, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
-            return $results;
+        $query = $this->where('node_id', '=', (string) $nodeId)->limit($limit);
+        if ($isRead !== null) {
+            $query = $query->where('is_read', '=', $isRead);
         }
+        $results = $this->get($query);
+        usort($results, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
+        return array_slice($results, 0, $limit);
     }
 
     public function getByUserId(string $userId, ?bool $isRead = null, int $perPage = 25): array
     {
-        try {
-            $query = $this->where('user_id', '=', (string) $userId)->orderBy('created_at', 'DESC')->limit($perPage);
-            if ($isRead !== null) {
-                $query = $query->where('is_read', '=', $isRead);
-            }
-            return $this->get($query);
-        } catch (\Throwable $e) {
-            $query = $this->where('user_id', '=', (string) $userId)->limit($perPage);
-            if ($isRead !== null) {
-                $query = $query->where('is_read', '=', $isRead);
-            }
-            $results = $this->get($query);
-            usort($results, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
-            return $results;
+        $query = $this->where('user_id', '=', (string) $userId)->limit($perPage * 2);
+        if ($isRead !== null) {
+            $query = $query->where('is_read', '=', $isRead);
         }
+        $results = $this->get($query);
+        usort($results, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
+        return array_slice($results, 0, $perPage);
     }
 
     public function markAsRead(string $alertId): void
@@ -77,21 +61,18 @@ class AlertRepository extends FirestoreRepository
 
     public function getActiveByNodeId(string $nodeId): ?array
     {
-        $query = $this->where('node_id', '=', (string) $nodeId)
-            ->where('status', '=', 'active')
-            ->orderBy('created_at', 'DESC')
-            ->limit(1);
-        $results = $this->get($query);
+        $query = $this->where('node_id', '=', (string) $nodeId)->limit(10);
+        $results = array_values(array_filter($this->get($query), fn($a) => ($a['status'] ?? 'active') === 'active'));
+        usort($results, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
 
         return $results[0] ?? null;
     }
 
     public function getUnreadCountByUserId(string $userId): int
     {
-        $query = $this->where('user_id', '=', (string) $userId)
-            ->where('is_read', '=', false)
-            ->where('status', '=', 'active');
+        $query = $this->where('user_id', '=', (string) $userId)->limit(50);
+        $results = array_filter($this->get($query), fn($a) => empty($a['is_read']) && ($a['status'] ?? 'active') === 'active');
 
-        return count($this->get($query));
+        return count($results);
     }
 }

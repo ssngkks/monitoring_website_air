@@ -12,6 +12,7 @@ import {
 import { MetricCard } from '../components/MetricCard';
 import { api, SensorData } from '../lib/api';
 import { SensorStatus, DeviceData } from '../components/SensorStatus';
+import { useLanguage } from '../context/LanguageContext';
 import {
   LineChart,
   Line,
@@ -28,6 +29,8 @@ import {
 } from 'recharts';
 
 export function Dashboard() {
+  const { t } = useLanguage();
+  const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [lastSensorTime, setLastSensorTime] = useState<string>('');
   const [dataRangeText, setDataRangeText] = useState<string>('Menunggu data...');
   const [chartData, setChartData] = useState<any[]>([]);
@@ -53,7 +56,10 @@ export function Dashboard() {
     const loadLatestSensor = async () => {
       try {
         const { data: nodes } = await api.nodes();
-        if (!nodes.length) return;
+        if (!nodes.length) {
+          if (!cancelled) setHasLoaded(true);
+          return;
+        }
 
         const primaryNode = nodes[0];
         const lr = (primaryNode as any).last_reading || {};
@@ -67,16 +73,16 @@ export function Dashboard() {
           status: primaryNode.is_online ? 'online' : 'offline',
           lastUpdate: primaryNode.last_seen_at
             ? new Date(primaryNode.last_seen_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' WIB'
-            : 'Belum terhubung',
-          rssi: (primaryNode as any).rssi ?? -43,
-          snr: (primaryNode as any).snr ?? 10.0,
+            : t.common.notConnected,
+          rssi: (primaryNode as any).rssi ?? null,
+          snr: (primaryNode as any).snr ?? null,
           metrics: {
-            ph: Number(lr.ph ?? 7.0),
-            temperature: Number(lr.temp ?? 25.0),
-            humidity: Number(lr.humidity ?? 50.0),
-            turbidity: Number(lr.turbidity ?? 0.5),
-            waterLevel: Number(lr.water_level ?? 0),
-            vibration: Boolean(lr.vibration ?? false),
+            ph: lr.ph !== undefined && lr.ph !== null ? Number(lr.ph) : null,
+            temperature: lr.temp !== undefined && lr.temp !== null ? Number(lr.temp) : null,
+            humidity: lr.humidity !== undefined && lr.humidity !== null ? Number(lr.humidity) : null,
+            turbidity: lr.turbidity !== undefined && lr.turbidity !== null ? Number(lr.turbidity) : null,
+            waterLevel: lr.water_level !== undefined && lr.water_level !== null ? Number(lr.water_level) : null,
+            vibration: lr.vibration !== undefined && lr.vibration !== null ? Boolean(lr.vibration) : null,
           },
         };
 
@@ -141,6 +147,10 @@ export function Dashboard() {
         }
       } catch (error) {
         console.error('Gagal mengambil data sensor:', error);
+      } finally {
+        if (!cancelled) {
+          setHasLoaded(true);
+        }
       }
     };
 
@@ -195,31 +205,39 @@ export function Dashboard() {
           <div className="flex items-center gap-3">
             <div
               className={`rounded-lg px-4 py-2 ${
-                metrics.vibration || phStatus === 'critical' || turbidityStatus === 'critical'
-                  ? 'bg-red-100 dark:bg-red-950'
-                  : 'bg-green-100 dark:bg-green-950'
+                !hasLoaded
+                  ? 'bg-gray-100 dark:bg-gray-800'
+                  : metrics.vibration || phStatus === 'critical' || turbidityStatus === 'critical'
+                    ? 'bg-red-100 dark:bg-red-950'
+                    : 'bg-green-100 dark:bg-green-950'
               }`}
             >
               <div className="flex items-center gap-2">
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    metrics.vibration || phStatus === 'critical' || turbidityStatus === 'critical'
-                      ? 'bg-red-500 animate-pulse'
-                      : 'bg-green-500'
+                    !hasLoaded
+                      ? 'bg-gray-400'
+                      : metrics.vibration || phStatus === 'critical' || turbidityStatus === 'critical'
+                        ? 'bg-red-500 animate-pulse'
+                        : 'bg-green-500'
                   }`}
                 />
                 <span
                   className={`text-sm font-semibold ${
-                    metrics.vibration || phStatus === 'critical' || turbidityStatus === 'critical'
-                      ? 'text-red-700 dark:text-red-400'
-                      : 'text-green-700 dark:text-green-400'
+                    !hasLoaded
+                      ? 'text-gray-700 dark:text-gray-300'
+                      : metrics.vibration || phStatus === 'critical' || turbidityStatus === 'critical'
+                        ? 'text-red-700 dark:text-red-400'
+                        : 'text-green-700 dark:text-green-400'
                   }`}
                 >
-                  {metrics.vibration
-                    ? 'Peringatan Getaran!'
-                    : phStatus === 'critical' || turbidityStatus === 'critical'
-                      ? 'Kondisi Kritis Terdeteksi'
-                      : 'Semua Parameter Normal'}
+                  {!hasLoaded
+                    ? t.common.waitingData
+                    : metrics.vibration
+                      ? t.dashboard.vibrationWarning
+                      : phStatus === 'critical' || turbidityStatus === 'critical'
+                        ? 'Kondisi Kritis Terdeteksi'
+                        : 'Semua Parameter Normal'}
                 </span>
               </div>
             </div>
@@ -231,12 +249,12 @@ export function Dashboard() {
           {/* pH Air */}
           <MetricCard
             title="pH Air"
-            value={metrics.ph}
-            unit="pH"
+            value={hasLoaded ? metrics.ph : '-'}
+            unit={hasLoaded ? "pH" : ""}
             icon={Droplet}
             trend={metrics.ph > 7.0 ? 'up' : 'down'}
             trendValue={metrics.ph > 7.0 ? '+0.02' : '-0.02'}
-            status={phStatus}
+            status={!hasLoaded ? 'normal' : phStatus}
             min={0}
             max={14}
             gaugeColor="#10b981"
@@ -245,12 +263,12 @@ export function Dashboard() {
           {/* Suhu */}
           <MetricCard
             title="Suhu (DHT)"
-            value={metrics.temperature}
-            unit="°C"
+            value={hasLoaded ? metrics.temperature : '-'}
+            unit={hasLoaded ? "°C" : ""}
             icon={Thermometer}
             trend="stable"
             trendValue="±0.2"
-            status={metrics.temperature > 28 ? 'warning' : 'normal'}
+            status={!hasLoaded ? 'normal' : (metrics.temperature > 28 ? 'warning' : 'normal')}
             min={0}
             max={50}
             gaugeColor="#3b82f6"
@@ -259,8 +277,8 @@ export function Dashboard() {
           {/* Kelembapan */}
           <MetricCard
             title="Kelembapan (DHT)"
-            value={metrics.humidity}
-            unit="%"
+            value={hasLoaded ? metrics.humidity : '-'}
+            unit={hasLoaded ? "%" : ""}
             icon={CloudRain}
             trend="stable"
             trendValue="±1%"
@@ -273,12 +291,12 @@ export function Dashboard() {
           {/* Kekeruhan */}
           <MetricCard
             title="Kekeruhan"
-            value={metrics.turbidity}
-            unit="NTU"
+            value={hasLoaded ? metrics.turbidity : '-'}
+            unit={hasLoaded ? "NTU" : ""}
             icon={Wind}
             trend="stable"
             trendValue="±0.05"
-            status={turbidityStatus}
+            status={!hasLoaded ? 'normal' : turbidityStatus}
             min={0}
             max={5}
             gaugeColor="#f97316"
@@ -466,7 +484,7 @@ export function Dashboard() {
 
               <div className="flex items-baseline gap-1.5">
                 <span className="text-3xl font-extrabold text-gray-900 dark:text-white">
-                  {metrics.waterLevel}
+                  {hasLoaded ? metrics.waterLevel : '-'}
                 </span>
                 <span className="text-sm text-gray-500">cm</span>
               </div>
@@ -475,10 +493,10 @@ export function Dashboard() {
                 <div
                   className="h-full rounded-full bg-blue-500 transition-all duration-500"
                   style={{
-                    width: `${Math.min(
+                    width: `${hasLoaded ? Math.min(
                       Math.max((metrics.waterLevel / 200) * 100, 0),
                       100
-                    )}%`,
+                    ) : 0}%`,
                   }}
                 />
               </div>
@@ -502,24 +520,36 @@ export function Dashboard() {
 
               <div
                 className={`text-3xl font-extrabold ${
-                  metrics.vibration ? 'text-red-600' : 'text-green-600'
+                  !hasLoaded
+                    ? 'text-gray-900 dark:text-white'
+                    : metrics.vibration
+                    ? 'text-red-600'
+                    : 'text-green-600'
                 }`}
               >
-                {metrics.vibration ? 'Terdeteksi Aktif' : 'Normal / Stabil'}
+                {!hasLoaded
+                  ? t.common.noData
+                  : metrics.vibration
+                  ? t.dashboard.vibrationActive
+                  : t.dashboard.vibrationNormal}
               </div>
 
               <div className="mt-4 flex items-center gap-2">
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    metrics.vibration
+                    !hasLoaded
+                      ? 'bg-gray-400'
+                      : metrics.vibration
                       ? 'animate-pulse bg-red-500'
                       : 'bg-green-500'
                   }`}
                 />
                 <span className="text-xs text-gray-500">
-                  {metrics.vibration
-                    ? 'Peringatan: Terjadi getaran melebihi ambang batas'
-                    : 'Tidak ada getaran abnormal yang terdeteksi'}
+                  {!hasLoaded
+                    ? t.common.waitingData
+                    : metrics.vibration
+                    ? t.dashboard.vibrationWarning
+                    : t.dashboard.vibrationSafe}
                 </span>
               </div>
             </div>
@@ -528,7 +558,7 @@ export function Dashboard() {
       </div>
 
       {/* Bagian Status Perangkat & Jaringan ESP32 (Representasi 1 Unit Fisik) */}
-      <SensorStatus device={device} />
+      <SensorStatus device={device} hasLoaded={hasLoaded} />
     </div>
   );
 }

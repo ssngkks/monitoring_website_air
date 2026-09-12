@@ -14,6 +14,7 @@ class ReportController extends Controller
     public function __construct(
         protected SensorDataRepository $sensorRepo,
         protected NodeRepository $nodeRepo,
+        protected \App\Services\FirebaseSyncService $syncService,
     ) {
     }
 
@@ -36,7 +37,8 @@ class ReportController extends Controller
         }
 
         $nodeId = $nodes[0]['id'];
-        $readings = $this->sensorRepo->getByNodeId($nodeId, 200);
+
+        $readings = $this->sensorRepo->getByNodeId($nodeId, 1000);
 
         if (empty($readings)) {
             return response()->json([
@@ -135,7 +137,7 @@ class ReportController extends Controller
         return response()->json([
             'data' => $rows,
             'meta' => [
-                'total' => count($rows),
+                'total' => $paginated['total'] ?? count($rows),
                 'has_more' => $paginated['has_more'],
             ],
         ]);
@@ -148,11 +150,16 @@ class ReportController extends Controller
         }
 
         if ($timestamp instanceof Timestamp) {
-            return $timestamp->toDateTime()->format(\DateTime::ATOM);
+            return $timestamp->get()->format(\DateTime::ATOM);
         }
 
         if ($timestamp instanceof \DateTimeInterface) {
             return $timestamp->format(\DateTime::ATOM);
+        }
+
+        if (is_numeric($timestamp)) {
+            $sec = strlen((string) (int) $timestamp) > 10 ? (int) ($timestamp / 1000) : (int) $timestamp;
+            return (new \DateTime("@$sec"))->format(\DateTime::ATOM);
         }
 
         if (is_string($timestamp)) {

@@ -146,7 +146,7 @@ class FirebaseSyncService
                     'water_level' => isset($latest['ketinggian_air']) ? (float) $latest['ketinggian_air'] : (isset($latest['water_level']) ? (float) $latest['water_level'] : null),
                     'vibration' => $vibration,
                     'vibration_rms' => $vibrationRms,
-                    'ai_status' => 'Normal',
+                    'ai_status' => $latest['ai_status'] ?? 'Normal',
                     'rssi' => $latest['rssi'] ?? -43,
                     'snr' => $latest['snr'] ?? 10.0,
                     'node_id' => $nodeId,

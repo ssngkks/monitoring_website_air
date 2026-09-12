@@ -23,16 +23,18 @@ class KirimNotifikasiRecovery implements ShouldQueue
 
     public function handle(): void
     {
-        $namaLokasi = $this->node['nama_lokasi'] ?? '-';
-        $kodeNode = $this->node['kode_node'] ?? '-';
+        // Pengiriman notifikasi Telegram dialihkan sepenuhnya ke ESP32 Gateway (lora2.ino)
+        // untuk mencegah pengiriman ganda (double notifications).
+        Log::info('Pengiriman recovery Telegram dari website dinonaktifkan (ditangani oleh ESP32 Gateway).');
 
-        $teks = sprintf(
-            "✅ *RECOVERY* - %s\nLokasi: %s (%s)\nStatus kembali Normal setelah sebelumnya %s.",
-            now()->format('d M Y H:i'),
-            $namaLokasi,
-            $kodeNode,
-            $this->previousStatus,
-        );
+        return;
+
+        $timestamp = \Carbon\Carbon::now()->locale('id')->isoFormat('D MMMM Y, HH:mm:ss') . ' WIB';
+
+        $teks = "✅ *EDGE AI UPDATE*\n\n"
+            . "Status kembali *NORMAL*\n"
+            . "Waktu: {$timestamp}\n"
+            . "Kondisi seluruh parameter telah stabil kembali.";
 
         $this->kirimTelegram($teks);
     }

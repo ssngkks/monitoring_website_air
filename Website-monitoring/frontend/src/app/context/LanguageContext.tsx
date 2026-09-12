@@ -6,6 +6,7 @@ const translations = {
   en: {
     nav: {
       dashboard: 'Dashboard',
+      aiAnalytics: 'AI Analytics',
       alerts: 'Alerts & Notifications',
       reports: 'Reports & Data',
       settings: 'Settings',
@@ -89,6 +90,7 @@ const translations = {
   id: {
     nav: {
       dashboard: 'Dasbor',
+      aiAnalytics: 'Analisis AI',
       alerts: 'Peringatan & Notifikasi',
       reports: 'Laporan & Data Sensor',
       settings: 'Pengaturan',

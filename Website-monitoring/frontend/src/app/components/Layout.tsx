@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import {
   LayoutDashboard,
+  Brain,
   Bell,
   FileText,
   Settings,
@@ -179,6 +180,7 @@ export function Layout() {
   ========================= */
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: t.nav.dashboard },
+    { path: '/ai-analytics', icon: Brain, label: t.nav.aiAnalytics },
     { path: '/alerts', icon: Bell, label: t.nav.alerts },
     { path: '/reports', icon: FileText, label: t.nav.reports },
     { path: '/settings', icon: Settings, label: t.nav.settings },

@@ -99,6 +99,8 @@ export const api = {
       }[];
       meta: { total: number; has_more: boolean };
     }>(`/reports/data${params ? `?${params}` : ''}`),
+  aiDiagnostics: (nodeId?: string | number) =>
+    apiFetch<AIDiagnosticResponse>(`/ai/diagnostics${nodeId ? `?node_id=${nodeId}` : ''}`),
 };
 
 export interface User {
@@ -143,3 +145,58 @@ export interface AlertData {
   created_at: string;
   node?: { id: number; kode_node: string; nama_lokasi: string };
 }
+
+export interface AIDiagnosticTrigger {
+  param: string;
+  value: string;
+  level: 'normal' | 'warning' | 'critical';
+}
+
+export interface AIRadarItem {
+  subject: string;
+  nilai_aktual: number;
+  skor: number;
+  batas_aman: number;
+  unit: string;
+}
+
+export interface AIDiagnosticCurrent {
+  status: 'Normal' | 'Anomali' | 'Bahaya';
+  confidence: number;
+  diagnosis: string;
+  triggers: AIDiagnosticTrigger[];
+  latency_us: number;
+  radar: AIRadarItem[];
+  raw_reading: {
+    ph: number;
+    turbidity: number;
+    temp: number;
+    water_level: number;
+    vibration: number;
+  };
+  timestamp: string;
+}
+
+export interface AIDiagnosticHistoryItem {
+  timestamp: string;
+  status: string;
+  confidence: string;
+  trigger: string;
+  note: string;
+}
+
+export interface AIComparisonItem {
+  skenario: string;
+  threshold_biasa: string;
+  edge_ai: string;
+  keuntungan: string;
+}
+
+export interface AIDiagnosticResponse {
+  data: {
+    current: AIDiagnosticCurrent;
+    history: AIDiagnosticHistoryItem[];
+    comparison: AIComparisonItem[];
+  };
+}
+

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router';
 import {
   Droplet,
   Thermometer,
@@ -8,6 +9,8 @@ import {
   AlertCircle,
   Clock,
   Cpu,
+  Sparkles,
+  ChevronRight,
 } from 'lucide-react';
 import { MetricCard } from '../components/MetricCard';
 import { api, SensorData } from '../lib/api';
@@ -34,6 +37,7 @@ export function Dashboard() {
   const [lastSensorTime, setLastSensorTime] = useState<string>('');
   const [dataRangeText, setDataRangeText] = useState<string>('Menunggu data...');
   const [chartData, setChartData] = useState<any[]>([]);
+  const [aiStatus, setAiStatus] = useState<string>('Normal');
 
   const [activeChart, setActiveChart] = useState<
     'water' | 'environment' | 'physical'
@@ -105,6 +109,8 @@ export function Dashboard() {
             vibration: Boolean(latest.vibration ?? false),
           });
 
+          setAiStatus(latest.ai_status || (primaryNode as any).last_reading?.ai_status || 'Normal');
+
           const latestDate = latest.created_at ? new Date(latest.created_at) : new Date();
           setLastSensorTime(latestDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' WIB');
 
@@ -141,6 +147,7 @@ export function Dashboard() {
             waterLevel: Number(fallbackLr.water_level ?? 0),
             vibration: Boolean(fallbackLr.vibration ?? false),
           });
+          setAiStatus(fallbackLr.ai_status || 'Normal');
           if (primaryNode.last_seen_at) {
             setLastSensorTime(new Date(primaryNode.last_seen_at).toLocaleTimeString('id-ID') + ' WIB');
           }
@@ -202,7 +209,28 @@ export function Dashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Badge Edge AI On-Device (Clickable -> /ai-analytics) */}
+            <Link
+              to="/ai-analytics"
+              title="Buka Analisis AI Mendalam"
+              className={`rounded-lg px-3.5 py-2 text-xs font-semibold flex items-center gap-2 border shadow-xs transition-all duration-150 hover:shadow-md hover:scale-[1.02] cursor-pointer group ${
+                !hasLoaded
+                  ? 'bg-gray-50 border-gray-200 text-gray-500 dark:bg-gray-800/80 dark:border-gray-700 dark:text-gray-400'
+                  : aiStatus === 'Bahaya'
+                    ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400'
+                    : aiStatus === 'Anomali'
+                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-400'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-400'
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
+              <span>
+                AI Status: {!hasLoaded ? t.common.loading : aiStatus}
+              </span>
+              <ChevronRight className="h-3 w-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+
             <div
               className={`rounded-lg px-4 py-2 ${
                 !hasLoaded

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AIDiagnosticController;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NodeController;
@@ -30,4 +31,8 @@ Route::middleware('verify.firebase.token')->group(function () {
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
     Route::get('/reports/data', [ReportController::class, 'data']);
+
+    // Explainable Edge AI Diagnostics
+    Route::get('/ai/diagnostics', [AIDiagnosticController::class, 'index']);
 });
+

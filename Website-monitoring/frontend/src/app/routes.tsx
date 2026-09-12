@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { Dashboard } from './pages/Dashboard';
+import { AIAnalytics } from './pages/AIAnalytics';
 import { Alerts } from './pages/Alerts';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
     Component: Layout,
     children: [
       { index: true, Component: Dashboard },
+      { path: 'ai-analytics', Component: AIAnalytics },
       { path: 'alerts', Component: Alerts },
       { path: 'reports', Component: Reports },
       { path: 'settings', Component: Settings },

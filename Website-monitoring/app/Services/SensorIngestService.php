@@ -186,14 +186,18 @@ class SensorIngestService
 
             $alertId = $this->alertRepo->createAlert($alertData);
             $alertData['id'] = $alertId;
+            $alertData['reading'] = $readingPayload;
             $alert = $alertData;
 
             // Update State Machine
             $this->alertStateRepo->updateState($nodeId, $severity, $anomalies[0]['param']);
 
-            // Cek Cooldown notifikasi (10 menit)
+            // Cek Cooldown notifikasi (10 menit) — hindari spam, kecuali level naik dari warning ke critical
             $cooldownMinutes = (int) config('watermonitoring.alert_cooldown_minutes', 10);
             $inCooldown = $this->alertStateRepo->isInCooldown($nodeId, $cooldownMinutes);
+            if ($previousSeverity === 'warning' && $severity === 'critical') {
+                $inCooldown = false;
+            }
 
             if (! $inCooldown) {
                 $this->alertStateRepo->updateLastNotified($nodeId);

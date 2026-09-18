@@ -1,0 +1,1 @@
+import{s as e}from"./app-C2KJ8QWE.js";var t={list:t=>{let n=new URLSearchParams;t?.is_read!==void 0&&n.set(`is_read`,t.is_read?`1`:`0`),t?.per_page&&n.set(`per_page`,String(t.per_page)),t?.page&&n.set(`page`,String(t.page));let r=n.toString()?`?${n.toString()}`:``;return e.get(`/api/alerts${r}`)},markRead:t=>e.patch(`/api/alerts/${t}/read`)};export{t};

@@ -1,0 +1,11 @@
+{
+  "frontend/src/main.tsx": {
+    "file": "assets/main-DV-wTIlJ.js",
+    "name": "main",
+    "src": "frontend/src/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/main-CBWgFp1D.css"
+    ]
+  }
+}
